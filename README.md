@@ -1,1 +1,2 @@
-# boost-miner
+# CPU Miner for Boost
+
