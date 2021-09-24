@@ -1,0 +1,124 @@
+version: 2.1
+
+macosBuildDefaults: &macosBuildDefaults
+  macos:
+      xcode: 12.3.0
+
+linuxBuildDefaults: &linuxBuildDefaults
+  docker:
+    - image: conanio/gcc9:latest
+  resource_class: medium
+
+commands:
+  install_macos_build_tools:
+    steps:
+      - run:
+          name: Install conan and build tools
+          command: |
+            rm -rf '/usr/local/lib/python3.9/site-packages/six.py'
+            brew install conan cmake pkg-config
+
+  build_recipe:
+    parameters:
+      envVars:
+        default: ""
+        type: string
+      cliParams:
+        default: ""
+        type: string
+    steps:
+      - run:
+          name: Build conan recipe
+          command: |
+            << parameters.envVars >>conan create . proofofwork/stable << parameters.cliParams >>
+
+  setup_conan_remote:
+    steps:
+      - run:
+          name: Setup conan remote
+          command: |
+            conan remote add proofofwork https://pow.jfrog.io/artifactory/api/conan/proofofwork
+
+  setup_conan_remote_credentials:
+    steps:
+      - run:
+          name: Setup conan remote
+          command: |
+            conan user -p $CONAN_PASSWORD -r proofofwork $CONAN_USERNAME
+
+  upload_conan_package:
+    steps:
+      - run:
+          name: Upload conan package
+          command: |
+            conan upload BoostMiner/${CIRCLE_TAG:1}@proofofwork/stable --all -r proofofwork --confirm
+
+  build_macos:
+    steps:
+      - install_macos_build_tools
+      - checkout
+      - setup_conan_remote
+      - build_recipe
+
+  build_linux:
+    steps:
+      - checkout
+      - setup_conan_remote
+      - build_recipe:
+          cliParams: "-s compiler.libcxx=libstdc++11"
+          envVars: "CMAKE_BUILD_CORES_COUNT=-j4 "
+
+jobs:
+
+  build_macos:
+    <<: *macosBuildDefaults
+    steps:
+      - build_macos
+
+  release_macos:
+    <<: *macosBuildDefaults
+    steps:
+      - build_macos
+      - setup_conan_remote_credentials
+      - upload_conan_package
+
+  build_linux:
+    <<: *linuxBuildDefaults
+    steps:
+      - build_linux
+
+  release_linux:
+    <<: *linuxBuildDefaults
+    steps:
+      - build_linux
+      - setup_conan_remote_credentials
+      - upload_conan_package
+
+          
+workflows:
+  build-and-release:
+    jobs:
+      - build_linux:
+          filters:
+            tags:
+              only: /^v.*/
+      - build_macos:
+          filters:
+            tags:
+              only: /^v.*/
+      - release_macos:
+          requires:
+            - build_macos
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - release_linux:
+          requires:
+            - build_linux
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
