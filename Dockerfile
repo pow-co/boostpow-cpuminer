@@ -8,3 +8,5 @@ RUN conan remote add proofofwork https://pow.jfrog.io/artifactory/api/conan/proo
 
 RUN conan install . -s compiler.libcxx=libstdc++11
 RUN conan build .
+
+CMD ./BoostMiner
