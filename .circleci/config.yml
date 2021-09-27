@@ -1,8 +1,18 @@
 version: 2.1
 
-macosBuildDefaults: &macosBuildDefaults
+macos1230BuildDefaults: &macos1230BuildDefaults
   macos:
       xcode: 12.3.0
+  environment:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      MACOS_BUILD: 1
+
+macos1170BuildDefaults: &macos1170BuildDefaults
+  macos:
+      xcode: 11.7.0
+  environment:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      MACOS_BUILD: 1
 
 linuxBuildDefaults: &linuxBuildDefaults
   docker:
@@ -15,8 +25,11 @@ commands:
       - run:
           name: Install conan and build tools
           command: |
-            rm -rf '/usr/local/lib/python3.9/site-packages/six.py'
-            brew install conan cmake pkg-config
+            brew install pyenv cmake pkg-config
+            eval "$(pyenv init -)"
+            pyenv install 3.9.0
+            pyenv global 3.9.0
+            pip install conan
 
   build_recipe:
     parameters:
@@ -30,6 +43,7 @@ commands:
       - run:
           name: Build conan recipe
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             << parameters.envVars >>conan create . proofofwork/stable << parameters.cliParams >>
 
   setup_conan_remote:
@@ -37,6 +51,7 @@ commands:
       - run:
           name: Setup conan remote
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             conan remote add proofofwork https://pow.jfrog.io/artifactory/api/conan/proofofwork
 
   setup_conan_remote_credentials:
@@ -44,6 +59,7 @@ commands:
       - run:
           name: Setup conan remote
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             conan user -p $CONAN_PASSWORD -r proofofwork $CONAN_USERNAME
 
   upload_conan_package:
@@ -70,13 +86,25 @@ commands:
 
 jobs:
 
-  build_macos:
-    <<: *macosBuildDefaults
+  build_macos_1230:
+    <<: *macos1230BuildDefaults
     steps:
       - build_macos
 
-  release_macos:
-    <<: *macosBuildDefaults
+  build_macos_1170:
+    <<: *macos1170BuildDefaults
+    steps:
+      - build_macos
+
+  release_macos_1230:
+    <<: *macos1230BuildDefaults
+    steps:
+      - build_macos
+      - setup_conan_remote_credentials
+      - upload_conan_package
+
+  release_macos_1170:
+    <<: *macos1170BuildDefaults
     steps:
       - build_macos
       - setup_conan_remote_credentials
@@ -102,13 +130,25 @@ workflows:
           filters:
             tags:
               only: /^v.*/
-      - build_macos:
+      - build_macos_1230:
           filters:
             tags:
               only: /^v.*/
-      - release_macos:
+      - build_macos_1170:
+          filters:
+            tags:
+              only: /^v.*/
+      - release_macos_1230:
           requires:
-            - build_macos
+            - build_macos_1230
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - release_macos_1170:
+          requires:
+            - build_macos_1170
           filters:
             branches:
               ignore: /.*/

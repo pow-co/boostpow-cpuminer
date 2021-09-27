@@ -14,7 +14,7 @@ class BoostMinerConan(ConanFile):
     default_options = {"shared": False, "fPIC": True}
     generators = "cmake_find_package"
     exports_sources = "src/*"
-    requires = "gigamonkey/0.1@proofofwork/stable"
+    requires = "gigamonkey/0.2@proofofwork/stable"
 
     def config_options(self):
         if self.settings.os == "Windows":
