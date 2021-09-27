@@ -75,6 +75,9 @@ commands:
       - checkout
       - setup_conan_remote
       - build_recipe
+      - store_artifacts:
+          path: BoostMiner
+          destination: boostminer_mac
 
   build_linux:
     steps:
@@ -83,6 +86,9 @@ commands:
       - build_recipe:
           cliParams: "-s compiler.libcxx=libstdc++11"
           envVars: "CMAKE_BUILD_CORES_COUNT=-j4 "
+      - store_artifacts:
+          path: BoostMiner
+          destination: boostminer_linux
 
 jobs:
 
