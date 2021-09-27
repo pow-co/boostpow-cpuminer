@@ -45,6 +45,7 @@ commands:
           command: |
             [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             << parameters.envVars >>conan create . proofofwork/stable << parameters.cliParams >>
+            conan build .
 
   setup_conan_remote:
     steps:
