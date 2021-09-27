@@ -43,6 +43,7 @@ commands:
       - run:
           name: Build conan recipe
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             << parameters.envVars >>conan create . proofofwork/stable << parameters.cliParams >>
 
   setup_conan_remote:
@@ -50,6 +51,7 @@ commands:
       - run:
           name: Setup conan remote
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             conan remote add proofofwork https://pow.jfrog.io/artifactory/api/conan/proofofwork
 
   setup_conan_remote_credentials:
@@ -57,6 +59,7 @@ commands:
       - run:
           name: Setup conan remote
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             conan user -p $CONAN_PASSWORD -r proofofwork $CONAN_USERNAME
 
   upload_conan_package:
