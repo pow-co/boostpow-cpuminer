@@ -290,7 +290,7 @@ int redeem(int arg_count, char** arg_values) {
     std::stringstream{arg_value} >> value;
     
     Bitcoin::txid txid{arg_txid};
-    if (!txid.valid()) throw "could not read txid";
+    if (!txid.valid() || data::encoding::hexidecimal::valid(arg_txid)) throw "could not read txid.";
     
     uint32 index;
     std::stringstream{arg_index} >> index;
@@ -339,7 +339,7 @@ int help() {
         "\nFor function \"redeem\", remaining inputs should be "
         "\n\tscript     -- boost output script."
         "\n\tvalue      -- value in satoshis of the output."
-        "\n\ttxid       -- txid of the tx that contains this output."
+        "\n\ttxid       -- txid of the tx that contains this output, written in hexidecimal (that means with 0x in front)"
         "\n\tindex      -- index of the output within that tx."
         "\n\twif        -- private key that will be used to redeem this output."
         "\n\taddress    -- your address where you will put the redeemed sats." 
