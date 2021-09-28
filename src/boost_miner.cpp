@@ -1,4 +1,5 @@
 #include <gigamonkey/boost/boost.hpp>
+#include <math.h>
 
 using namespace Gigamonkey;
 
@@ -191,7 +192,7 @@ Bitcoin::transaction mine(
     // the address you want the bitcoins to go to once you have redeemed the boost output.
     // this is not the same as 'miner address'. This is just an address in your 
     // normal wallet and should not be the address that goes along with the key above.
-    Bitcoin::address address) {
+    Bitcoin::address address, double fee_rate) {
     using namespace Bitcoin;
     
     // Is this a boost output? 
@@ -227,8 +228,7 @@ Bitcoin::transaction mine(
             + pay_script.size()  // output script size         
             + 4;                 // locktime
         
-        // we will do a tx fee of 1 sats / byte, which is WAY too expensive if you ask me!! 
-        satoshi fee = estimated_tx_size;
+        satoshi fee = ceil(estimated_tx_size * fee_rate);
         
         if (fee > spent) throw "Cannot pay tx fee with boost output";
         
@@ -273,7 +273,7 @@ Bitcoin::transaction mine(
 }
 
 int redeem(int arg_count, char** arg_values) {
-    if (arg_count != 6) throw "invalid number of arguments; should be 6";
+    if (arg_count != 7) throw "invalid number of arguments; should be 6";
     
     string arg_script{arg_values[0]};
     string arg_value{arg_values[1]};
@@ -281,6 +281,7 @@ int redeem(int arg_count, char** arg_values) {
     string arg_index{arg_values[3]};
     string arg_wif{arg_values[4]};
     string arg_address{arg_values[5]};
+    string arg_fee_rate{arg_values[6]};
     
     ptr<bytes> script = encoding::hex::read(arg_script);
     if (script == nullptr) throw "could not read script"; 
@@ -300,11 +301,15 @@ int redeem(int arg_count, char** arg_values) {
     Bitcoin::secret key{arg_wif};
     if (!key.valid()) throw "could not read secret key";
     
+    double fee_rate;
+    std::stringstream{arg_fee_rate} >> fee_rate;
+    if (fee_rate <= 0) throw "could not read fee rate"; 
+    
     Bitcoin::transaction tx = mine(
         Bitcoin::ledger::prevout{
             Bitcoin::outpoint{txid, index}, 
             Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
-        key, address);
+        key, address, fee_rate);
     
     bytes tx_serialized = tx.write();
     Bitcoin::satoshi fee = value - tx.Outputs.first().Value;
@@ -315,6 +320,8 @@ int redeem(int arg_count, char** arg_values) {
     std::cout << "size: " << size << " bytes" << std::endl;
     std::cout << "tx fee: " << fee << " sats" << std::endl;
     std::cout << "fee rate: " << double(fee) / double(size) << " sats" << std::endl;
+    
+    if (fee_rate > (double(fee) / double(size))) throw "final tx fee rate is too small. There is a problem with expected size calculation.";
     
     return 0;
 }
@@ -335,13 +342,14 @@ int help() {
         "\n\ttxid       -- txid of the tx that contains this output."
         "\n\tindex      -- index of the output within that tx."
         "\n\twif        -- private key that will be used to redeem this output."
-        "\n\taddress    -- your address where you will put the redeemed sats." << std::endl;
+        "\n\taddress    -- your address where you will put the redeemed sats." 
+        "\n\tfee rate   -- fee rate of the redeeming tx." << std::endl;
     
     return 0;
 }
 
 int main(int arg_count, char** arg_values) {
-    if (arg_count != 5) return help();
+    if (arg_count < 2) return help();
     
     string function{arg_values[1]};
     
