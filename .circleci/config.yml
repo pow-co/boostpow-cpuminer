@@ -67,6 +67,7 @@ commands:
       - run:
           name: Upload conan package
           command: |
+            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             conan upload BoostMiner/${CIRCLE_TAG:1}@proofofwork/stable --all -r proofofwork --confirm
 
   publish_artifacts:
