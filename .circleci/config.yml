@@ -45,7 +45,6 @@ commands:
           command: |
             [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
             << parameters.envVars >>conan create . proofofwork/stable << parameters.cliParams >>
-            conan build .
 
   setup_conan_remote:
     steps:
@@ -70,15 +69,29 @@ commands:
           command: |
             conan upload BoostMiner/${CIRCLE_TAG:1}@proofofwork/stable --all -r proofofwork --confirm
 
+  publish_artifacts:
+    parameters:
+      destinationFileName:
+        type: string
+    steps:
+      - run:
+          name: Copy artifacts to the temp directory
+          command: |
+            mkdir -p /tmp/artifacts
+            cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/BoostMiner /tmp/artifacts
+            ls -l /tmp/artifacts
+      - store_artifacts:
+          path: /tmp/artifacts/BoostMiner
+          destination: << parameters.destinationFileName >>
+
   build_macos:
     steps:
       - install_macos_build_tools
       - checkout
       - setup_conan_remote
       - build_recipe
-      - store_artifacts:
-          path: BoostMiner
-          destination: boostminer_mac
+      - publish_artifacts:
+          destinationFileName: "boostminer_mac"
 
   build_linux:
     steps:
@@ -87,9 +100,8 @@ commands:
       - build_recipe:
           cliParams: "-s compiler.libcxx=libstdc++11"
           envVars: "CMAKE_BUILD_CORES_COUNT=-j4 "
-      - store_artifacts:
-          path: BoostMiner
-          destination: boostminer_linux
+      - publish_artifacts:
+          destinationFileName: "boostminer_linux"
 
 jobs:
 
