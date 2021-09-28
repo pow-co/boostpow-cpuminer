@@ -206,8 +206,34 @@ Bitcoin::transaction mine(
     // is the difficulty too high?
     if (output_script.Target.difficulty() > 1.01) throw "Difficulty is too high for CPU mining.";
     
+    // the script we will use to pay ourselves. 
+    bytes pay_script = pay_to_address::script(address.Digest);
+    
+    satoshi spent = prevout.Value.Value;
+    
     // is the value in the output high enough? 
-    satoshi value;
+    satoshi sent;
+    
+    {
+        data::uint32 estimated_tx_size 
+            = 4                  // tx version
+            + 1                  // var int value 1 (to say how many inputs there are)
+            + 36                 // outpoint
+                                 // input script size with signature max size
+            + Boost::input_script::expected_size(output_script.Type, output_script.UseGeneralPurposeBits)
+            + 4                  // sequence number
+            + 1                  // var int value 1 (number of outputs)
+            + 8                  // satoshi value size
+            + pay_script.size()  // output script size         
+            + 4;                 // locktime
+        
+        // we will do a tx fee of 1 sats / byte, which is WAY too expensive if you ask me!! 
+        satoshi fee = estimated_tx_size;
+        
+        if (fee > spent) throw "Cannot pay tx fee with boost output";
+        
+        sent = spent - fee;
+    }
     
     std::cout << "now let's start mining." << std::endl;
     
@@ -227,7 +253,7 @@ Bitcoin::transaction mine(
     // the incomplete transaction 
     incomplete::transaction incomplete{ 
         {incomplete::input{prevout.key()}},                       // one incomplete input 
-        {output{value, pay_to_address::script(address.Digest)}}}; // one output 
+        {output{sent, pay_script}}}; // one output 
     
     // signature
     signature signature = private_key.sign( 
@@ -280,7 +306,15 @@ int redeem(int arg_count, char** arg_values) {
             Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
         key, address);
     
-    std::cout << "Here is the final transaction: " << tx << std::endl;
+    bytes tx_serialized = tx.write();
+    Bitcoin::satoshi fee = value - tx.Outputs.first().Value;
+    size_t size = tx_serialized.size();
+    
+    std::cout << "Here is the final transaction: " << tx_serialized << std::endl;
+    std::cout << "details: " << tx << std::endl;
+    std::cout << "size: " << size << " bytes" << std::endl;
+    std::cout << "tx fee: " << fee << " sats" << std::endl;
+    std::cout << "fee rate: " << double(fee) / double(size) << " sats" << std::endl;
     
     return 0;
 }
