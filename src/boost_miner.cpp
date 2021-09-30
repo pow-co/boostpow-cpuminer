@@ -5,6 +5,31 @@
 using namespace Gigamonkey;
 using nlohmann::json;
 
+Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_script, double fee_rate) {
+
+  Boost::output_script output_script{prevout.value().Script};
+
+  data::uint32 estimated_tx_size
+    = 4                  // tx version
+    + 1                  // var int value 1 (to say how many inputs there are)
+    + 36                 // outpoint
+                         // input script size with signature max size
+    + Boost::input_script::expected_size(output_script.Type, output_script.UseGeneralPurposeBits)
+    + 4                  // sequence number
+    + 1                  // var int value 1 (number of outputs)
+    + 8                  // satoshi value size
+    + pay_script.size()  // output script size
+    + 4;                 // locktime
+
+  Bitcoin::satoshi spent = prevout.Value.Value;
+
+  Bitcoin::satoshi fee = ceil(estimated_tx_size * fee_rate);
+
+  if (fee > spent) throw "Cannot pay tx fee with boost output";
+
+  return fee;
+}
+
 // A cpu miner function. 
 work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
     using uint256 = Gigamonkey::uint256;
@@ -16,8 +41,8 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
     
     uint256 target = p.Candidate.Target.expand();
     if (target == 0) return {};
-    std::cout << " working " << p << std::endl;
-    std::cout << " with target " << target << std::endl;
+    //std::cout << " working " << p << std::endl;
+    //std::cout << " with target " << target << std::endl;
     
     uint256 best{"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
     
@@ -106,8 +131,6 @@ int spend(int arg_count, char** arg_values) {
     digest256 content{content_hash_hex};
     if (!content.valid()) throw (string{"could not read content: "} + content_hash_hex);
     
-    std::cout << "content to be boosted: " << content << std::endl;
-    
     double diff = 0;
     string difficulty_input{arg_values[1]};
     std::stringstream diff_stream{difficulty_input};
@@ -122,7 +145,7 @@ int spend(int arg_count, char** arg_values) {
     work::compact target{work::difficulty{diff}};
     if (!target.valid()) throw (string{"could not read difficulty: "} + difficulty_input);
     
-    std::cout << "target: " << target << std::endl;
+    //std::cout << "target: " << target << std::endl;
     
     // Tag/topic does not need to be anything. 
     ptr<bytes> topic = encoding::hex::read(string{arg_values[2]});
@@ -167,6 +190,15 @@ int spend(int arg_count, char** arg_values) {
             user_nonce, 
             *additional_data, 
             use_general_purpose_bits);
+      logger::log("job.create", json {
+          {"target", target},
+          {"difficulty", diff},
+          {"content", content_hash_hex},
+          {"script", {
+            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
+            {"hex",output_script.write()}
+          }}
+      });
     } else {
         Bitcoin::address miner_address{arg_values[4]};
         if (!miner_address.valid()) throw (string{"could not read miner address: "} + string{arg_values[4]});
@@ -180,9 +212,19 @@ int spend(int arg_count, char** arg_values) {
             *additional_data, 
             miner_address.Digest, 
             use_general_purpose_bits);
+
+      logger::log("job.create", json {
+          {"target", target},
+          {"difficulty", diff},
+          {"content", content_hash_hex},
+          {"miner", arg_values[4]},
+          {"script", {
+            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
+            {"hex",output_script.write()}
+          }}
+      });
     }
-    
-    std::cout << "The output script is " << Bitcoin::interpreter::ASM(output_script.write()) << std::endl;
+
     
     return 0;
 }
@@ -210,12 +252,10 @@ Bitcoin::transaction mine(
         
     // is the difficulty too high?
     if (output_script.Target.difficulty() > 1.01) {
-      std::cout << "warning: difficulty may be too high for CPU mining." << std::endl;
+      //std::cout << "warning: difficulty may be too high for CPU mining." << std::endl;
     }
     
     // is the value in the output high enough? 
-    satoshi value;
-    
     Boost::puzzle boost_puzzle{output_script, private_key};
     
     auto generator = data::get_random_engine();
@@ -228,11 +268,17 @@ Bitcoin::transaction mine(
     if (output_script.UseGeneralPurposeBits) initial.Share.Bits = random_uint32(generator);
     
     work::proof proof = ::cpu_solve(work::puzzle(boost_puzzle), initial);
+
+    bytes pay_script = pay_to_address::script(address.Digest);
+
+    double fee_rate = 0.5;
+
+    Bitcoin::satoshi fee { calculate_fee(prevout, pay_script, fee_rate) };
     
     // the incomplete transaction 
     incomplete::transaction incomplete{ 
-        {incomplete::input{prevout.key()}},                       // one incomplete input 
-        {output{value, pay_to_address::script(address.Digest)}}}; // one output 
+        {incomplete::input{prevout.key()}}, // one incomplete input 
+        {output{prevout.Value.Value - fee, pay_script}}}; // one output 
     
     // signature
     signature signature = private_key.sign( 
@@ -243,8 +289,12 @@ Bitcoin::transaction mine(
     
     Boost::input_script input_script = Boost::input_script(
             signature, private_key.to_public(), proof.Solution, output_script.Type, output_script.UseGeneralPurposeBits);
-    
-    std::cout << "Here is the redeem script: " << interpreter::ASM(input_script.write()) << std::endl;
+
+    logger::log("job.complete.redeemscript", json {
+      {"asm", interpreter::ASM(input_script.write())},
+      {"hex", input_script.write()},
+      {"fee", fee}
+    });
     
     // the transaction 
     return incomplete.complete({input_script.write()});
@@ -278,16 +328,23 @@ int redeem(int arg_count, char** arg_values) {
     
     Bitcoin::secret key{arg_wif};
     if (!key.valid()) throw "could not read secret key";
+
+    logger::log("job.mine", json {
+      {"script", arg_values[0]},
+      {"value", arg_values[1]},
+      {"txid", arg_values[2]},
+      {"vout", arg_values[3]},
+      {"miner", key.address().write()},
+      {"recipient", address.write()}
+    });
     
     Bitcoin::transaction tx = mine(
         Bitcoin::ledger::prevout{
             Bitcoin::outpoint{txid, index}, 
             Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
         key, address);
-    
-    std::cout << "Here is the final transaction: " << tx << std::endl;
 
-    logger::log("job.complete", json {
+    logger::log("job.complete.transaction", json {
       {"txhex", tx.write()}
     });
     
