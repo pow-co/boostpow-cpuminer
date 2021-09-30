@@ -1,7 +1,22 @@
 #include <gigamonkey/boost/boost.hpp>
 #include <nlohmann/json.hpp>
+#include <ctime>
+#include "boost/date_time/posix_time/posix_time_types.hpp"
+#include <boost/date_time.hpp>
 
 using namespace Gigamonkey;
+using nlohmann::json;
+
+void log(std::string event, json j) {
+
+  boost::posix_time::ptime timestamp { boost::posix_time::microsec_clock::universal_time() };
+
+  j["timestamp"] = to_iso_extended_string(timestamp);
+  j["event"] = event;
+
+  std::cout << j.dump() << std::endl;
+
+}
 
 // A cpu miner function. 
 work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
@@ -32,30 +47,16 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
         if (hash < best) {
             best = hash;
 
-            /*
-            nlohmann::json totalHashesEvent {
-              {"event","totalhashes"},
-              {"total", total_hashes}
-            };
-
-            std::cout << totalHashesEvent.dump() << std::endl;
-            */
-            std::cout << "totalhashes=" << total_hashes << std::endl;
-          
-            nlohmann::json bestHashEvent {
-              {"event","besthash"},
-              {"hash", best}
-            };
-
-            std::cout << bestHashEvent.dump() << std::endl;
+            log("besthash", json {
+              {"hash", best},
+              {"total", uint64(total_hashes)}
+            });
 
         } else if (pr.Solution.Share.Nonce % display_increment == 0) {
             pr.Solution.Share.Timestamp = Bitcoin::timestamp::now();
-            std::cout << " hashes: " << total_hashes << std::endl;
         }
         
         if (hash < target) {
-            std::cout << " solution found! " << std::endl;
             return pr;
         }
         
@@ -299,13 +300,9 @@ int redeem(int arg_count, char** arg_values) {
     
     std::cout << "Here is the final transaction: " << tx << std::endl;
 
-
-    nlohmann::json completeEvent {
-      {"event", "job.complete"},
+    log("job.complete", json {
       {"txhex", tx.write()}
-    };
-
-    std::cout << completeEvent.dump() << std::endl;
+    });
     
     return 0;
 }
