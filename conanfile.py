@@ -3,12 +3,12 @@ from conans import ConanFile, CMake
 
 class BoostMinerConan(ConanFile):
     name = "BoostMiner"
-    version = "0.1"
-    license = "<Put the package license here>"
-    author = "<Put your name here> <And your email here>"
-    url = "<Package recipe repository url here, for issues about the package>"
-    description = "<Description of BoostMiner here>"
-    topics = ("<Put some tag here>", "<here>", "<and here>")
+    version = "0.2.2"
+    license = "Proprietary"
+    author = "Proof of Work Company"
+    url = "https://github.com/ProofOfWorkCompany/BoostMiner"
+    description = "Worker for Mining Boost Puzzles on Bitcoin"
+    topics = ("bitcoin", "mining", "cpu", "sha256", "proofofwork", "boost")
     settings = "os", "compiler", "build_type", "arch"
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}

@@ -1,4 +1,5 @@
 #include <gigamonkey/boost/boost.hpp>
+#include <nlohmann/json.hpp>
 
 using namespace Gigamonkey;
 
@@ -6,7 +7,7 @@ using namespace Gigamonkey;
 work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
     using uint256 = Gigamonkey::uint256;
     
-    if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
+    //if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
     
     uint64_big extra_nonce_2; 
     std::copy(initial.Share.ExtraNonce2.begin(), initial.Share.ExtraNonce2.end(), extra_nonce_2.begin());
@@ -30,8 +31,24 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
         
         if (hash < best) {
             best = hash;
-            std::cout << " hashes: " << total_hashes << std::endl;
-            std::cout << " new best hash: " << best << std::endl;
+
+            /*
+            nlohmann::json totalHashesEvent {
+              {"event","totalhashes"},
+              {"total", total_hashes}
+            };
+
+            std::cout << totalHashesEvent.dump() << std::endl;
+            */
+            std::cout << "totalhashes=" << total_hashes << std::endl;
+          
+            nlohmann::json bestHashEvent {
+              {"event","besthash"},
+              {"hash", best}
+            };
+
+            std::cout << bestHashEvent.dump() << std::endl;
+
         } else if (pr.Solution.Share.Nonce % display_increment == 0) {
             pr.Solution.Share.Timestamp = Bitcoin::timestamp::now();
             std::cout << " hashes: " << total_hashes << std::endl;
@@ -204,12 +221,12 @@ Bitcoin::transaction mine(
         throw "Incorrect key provided to mine this output.";
         
     // is the difficulty too high?
-    if (output_script.Target.difficulty() > 1.01) throw "Difficulty is too high for CPU mining.";
+    if (output_script.Target.difficulty() > 1.01) {
+      std::cout << "warning: difficulty may be too high for CPU mining." << std::endl;
+    }
     
     // is the value in the output high enough? 
     satoshi value;
-    
-    std::cout << "now let's start mining." << std::endl;
     
     Boost::puzzle boost_puzzle{output_script, private_key};
     
@@ -281,6 +298,14 @@ int redeem(int arg_count, char** arg_values) {
         key, address);
     
     std::cout << "Here is the final transaction: " << tx << std::endl;
+
+
+    nlohmann::json completeEvent {
+      {"event", "job.complete"},
+      {"txhex", tx.write()}
+    };
+
+    std::cout << completeEvent.dump() << std::endl;
     
     return 0;
 }
@@ -307,7 +332,7 @@ int help() {
 }
 
 int main(int arg_count, char** arg_values) {
-    if (arg_count != 5) return help();
+    //if (arg_count != 5) return help();
     
     string function{arg_values[1]};
     
