@@ -1,22 +1,9 @@
 #include <gigamonkey/boost/boost.hpp>
-#include <nlohmann/json.hpp>
 #include <ctime>
-#include "boost/date_time/posix_time/posix_time_types.hpp"
-#include <boost/date_time.hpp>
+#include "./logger.cpp"
 
 using namespace Gigamonkey;
 using nlohmann::json;
-
-void log(std::string event, json j) {
-
-  boost::posix_time::ptime timestamp { boost::posix_time::microsec_clock::universal_time() };
-
-  j["timestamp"] = to_iso_extended_string(timestamp);
-  j["event"] = event;
-
-  std::cout << j.dump() << std::endl;
-
-}
 
 // A cpu miner function. 
 work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
@@ -47,7 +34,7 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
         if (hash < best) {
             best = hash;
 
-            log("besthash", json {
+            logger::log("besthash", json {
               {"hash", best},
               {"total", uint64(total_hashes)}
             });
@@ -300,7 +287,7 @@ int redeem(int arg_count, char** arg_values) {
     
     std::cout << "Here is the final transaction: " << tx << std::endl;
 
-    log("job.complete", json {
+    logger::log("job.complete", json {
       {"txhex", tx.write()}
     });
     
