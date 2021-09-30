@@ -3,7 +3,7 @@ from conans import ConanFile, CMake
 
 class BoostMinerConan(ConanFile):
     name = "BoostMiner"
-    version = "0.2.2"
+    version = "0.2.4"
     license = "Proprietary"
     author = "Proof of Work Company"
     url = "https://github.com/ProofOfWorkCompany/BoostMiner"
