@@ -290,12 +290,18 @@ Bitcoin::transaction mine(
     Boost::input_script input_script = Boost::input_script(
             signature, private_key.to_public(), proof.Solution, output_script.Type, output_script.UseGeneralPurposeBits);
 
+    data::bytes redeemhex = input_script.write();
+
+    std::string redeemhexstring = data::encoding::hex::write(redeemhex);
+
+    //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
+    
     logger::log("job.complete.redeemscript", json {
       {"asm", interpreter::ASM(input_script.write())},
-      {"hex", input_script.write()},
+      {"hex", redeemhexstring },
       {"fee", fee}
     });
-    
+
     // the transaction 
     return incomplete.complete({input_script.write()});
     
@@ -344,14 +350,20 @@ int redeem(int arg_count, char** arg_values) {
             Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
         key, address);
 
+
+    std::string txhex = data::encoding::hex::write(tx.write());
+
+    //std::cout << "job.complete.transaction " << txhex << std::endl;
+
     logger::log("job.complete.transaction", json {
-      {"txhex", tx.write()}
+      {"txhex", txhex}
     });
     
     return 0;
 }
 
 int help() {
+
     std::cout << "input should be \"function\" \"args\"... where function is "
         "\n\tspend      -- create a Boost output."
         "\n\tredeem     -- mine and redeem an existing boost output."
