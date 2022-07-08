@@ -12,7 +12,7 @@ class BoostMinerConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}
-    generators = "cmake_find_package"
+    generators = "cmake"
     exports_sources = "src/*"
     requires = "gigamonkey/0.2@proofofwork/stable"
 
