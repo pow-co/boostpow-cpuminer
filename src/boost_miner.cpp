@@ -229,6 +229,22 @@ int spend(int arg_count, char** arg_values) {
     return 0;
 }
 
+json solution_to_json(work::solution x) {
+    using data::encoding::hex;
+    json share {
+        {"timestamp", write(x.Share.Timestamp.Value)}, 
+        {"nonce", write(x.Share.Nonce)}, 
+        {"extra_nonce_2", write(x.Share.ExtraNonce2) }
+    };
+    
+    if (x.Share.Bits) share["bits"] = write(*x.Share.Bits);
+    
+    return json {
+        {"share", share}, 
+        {"extra_nonce_1", write(x.ExtraNonce1)};
+    }
+}
+
 Bitcoin::transaction mine(
     // an unredeemed Boost PoW output 
     Bitcoin::ledger::prevout prevout, 
@@ -297,6 +313,7 @@ Bitcoin::transaction mine(
     //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
     
     logger::log("job.complete.redeemscript", json {
+      {"solution", solution_to_json(proof.Solution)}
       {"asm", interpreter::ASM(input_script.write())},
       {"hex", redeemhexstring },
       {"fee", fee}
