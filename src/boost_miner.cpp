@@ -230,19 +230,19 @@ int spend(int arg_count, char** arg_values) {
 }
 
 json solution_to_json(work::solution x) {
-    using data::encoding::hex;
+
     json share {
-        {"timestamp", write(x.Share.Timestamp.Value)}, 
-        {"nonce", write(x.Share.Nonce)}, 
-        {"extra_nonce_2", write(x.Share.ExtraNonce2) }
+        {"timestamp", data::encoding::hex::write(x.Share.Timestamp.Value)},
+        {"nonce", data::encoding::hex::write(x.Share.Nonce)},
+        {"extra_nonce_2", data::encoding::hex::write(x.Share.ExtraNonce2) }
     };
     
-    if (x.Share.Bits) share["bits"] = write(*x.Share.Bits);
+    if (x.Share.Bits) share["bits"] = data::encoding::hex::write(*x.Share.Bits);
     
     return json {
         {"share", share}, 
-        {"extra_nonce_1", write(x.ExtraNonce1)};
-    }
+        {"extra_nonce_1", data::encoding::hex::write(x.ExtraNonce1)}
+    };
 }
 
 Bitcoin::transaction mine(
@@ -313,7 +313,7 @@ Bitcoin::transaction mine(
     //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
     
     logger::log("job.complete.redeemscript", json {
-      {"solution", solution_to_json(proof.Solution)}
+      {"solution", solution_to_json(proof.Solution)},
       {"asm", interpreter::ASM(input_script.write())},
       {"hex", redeemhexstring },
       {"fee", fee}
@@ -402,6 +402,7 @@ int help() {
 }
 
 int main(int arg_count, char** arg_values) {
+	if(arg_count ==1) return help();
     //if (arg_count != 5) return help();
     
     string function{arg_values[1]};
