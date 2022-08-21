@@ -23,6 +23,8 @@ bool whatsonchain::transactions::broadcast(const bytes &tx) {
         return false;
     }
     
+    if (response.Body == "") return false;
+    
     return true;
 }
         

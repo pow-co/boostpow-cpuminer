@@ -9,7 +9,7 @@ class BoostMinerConan(ConanFile):
     url = "https://github.com/ProofOfWorkCompany/BoostMiner"
     description = "Worker for Mining Boost Puzzles on Bitcoin"
     topics = ("bitcoin", "mining", "cpu", "sha256", "proofofwork", "boost")
-    settings = "os", "compiler", "build_type", "arch"
+    settings = "os", "compiler", "build_type", "arch"   
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}
     generators = "cmake"
