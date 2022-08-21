@@ -1,9 +1,12 @@
 #include <gigamonkey/boost/boost.hpp>
 #include <ctime>
+#include <wallet.hpp>
 #include "./logger.cpp"
 
 using namespace Gigamonkey;
 using nlohmann::json;
+
+constexpr double default_fee_rate = 0.5;
 
 Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_script, double fee_rate) {
 
@@ -110,8 +113,7 @@ data::uint32 random_uint32(engine& gen) {
     return dis(gen);
 }
 
-int spend(int arg_count, char** arg_values) {
-    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
+Boost::output_script read_output_script(int arg_count, char** arg_values) {
     
     string content_hash_hex{arg_values[0]};
     
@@ -224,14 +226,19 @@ int spend(int arg_count, char** arg_values) {
           }}
       });
     }
-
     
+    return output_script;
+}
+
+int spend(int arg_count, char** arg_values) {
+    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
+    read_output(arg_count, arg_values);
     return 0;
 }
 
 Bitcoin::transaction mine(
     // an unredeemed Boost PoW output 
-    Bitcoin::ledger::prevout prevout, 
+    prevout prevout, 
     // The private key that you will use to redeem the boost output. This key 
     // corresponds to 'miner address' in the Boost PoW protocol. 
     Bitcoin::secret private_key, 
@@ -271,9 +278,7 @@ Bitcoin::transaction mine(
 
     bytes pay_script = pay_to_address::script(address.Digest);
 
-    double fee_rate = 0.5;
-
-    Bitcoin::satoshi fee { calculate_fee(prevout, pay_script, fee_rate) };
+    Bitcoin::satoshi fee { calculate_fee(prevout, pay_script, default_fee_rate) };
     
     // the incomplete transaction 
     incomplete::transaction incomplete{ 
@@ -289,11 +294,11 @@ Bitcoin::transaction mine(
     
     Boost::input_script input_script = Boost::input_script(
             signature, private_key.to_public(), proof.Solution, output_script.Type, output_script.UseGeneralPurposeBits);
-
+    
     data::bytes redeemhex = input_script.write();
-
+    
     std::string redeemhexstring = data::encoding::hex::write(redeemhex);
-
+    
     //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
     
     logger::log("job.complete.redeemscript", json {
@@ -301,7 +306,7 @@ Bitcoin::transaction mine(
       {"hex", redeemhexstring },
       {"fee", fee}
     });
-
+    
     // the transaction 
     return incomplete.complete({input_script.write()});
     
@@ -353,11 +358,43 @@ int redeem(int arg_count, char** arg_values) {
 
     std::string txhex = data::encoding::hex::write(tx.write());
 
-    //std::cout << "job.complete.transaction " << txhex << std::endl;
-
     logger::log("job.complete.transaction", json {
       {"txhex", txhex}
     });
+    
+    return 0;
+}
+
+int boost(int arg_count, char** arg_values) {
+    
+    if (arg_count < 6 || arg_count > 7) throw "invalid number of arguments; should be 4 or 5";
+    
+    auto w = read_from_file(string{arg_values[0]});
+    
+    string arg_value{arg_values[1]};
+    
+    int64 satoshi_value;
+    std::stringstream{arg_value} >> satoshi_value;
+    
+    Bitcoin::satoshi value = satoshi_value;
+    
+    if (value > w.value()) throw "insufficient funds";
+    
+    Bitcoin::output_script output_script = read_output_script(arg_count - 2, arg_values + 2);
+    
+    auto spend = w.spend(Bitcoin::output{value, output_script.write()});
+    
+    broadcast(spend.Transaction);
+    
+    write_to_file(spend.Wallet);
+    
+    w = spend.Wallet;
+    
+    Bitcoin::transaction redeem = mine(w.Prevout, w.Key, w.Key.Address);
+    
+    broadcast(redeem);
+    
+    write_to_file(w.add());
     
     return 0;
 }
@@ -379,7 +416,15 @@ int help() {
         "\n\ttxid       -- txid of the tx that contains this output."
         "\n\tindex      -- index of the output within that tx."
         "\n\twif        -- private key that will be used to redeem this output."
-        "\n\taddress    -- your address where you will put the redeemed sats." << std::endl;
+        "\n\taddress    -- your address where you will put the redeemed sats."
+        "\nFor function \"boost\", remaining inputs should be "
+        "\n\tfilename   -- wallet file name."
+        "\n\tvalue      -- value in satoshis to pay for boost."
+        "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
+        "\n\tdifficulty -- "
+        "\n\ttopic      -- string max 20 bytes."
+        "\n\tadd. data  -- string, any size."
+        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
     
     return 0;
 }
@@ -392,12 +437,14 @@ int main(int arg_count, char** arg_values) {
     try {
         if (function == "spend") return spend(arg_count - 2, arg_values + 2);
         if (function == "redeem") return redeem(arg_count - 2, arg_values + 2);
+        if (function == "boost") return boost(arg_count - 2, arg_values + 2);
         if (function == "help") return help();
         help();
     } catch (string x) {
         std::cout << "Error: " << x << std::endl;
+        return 1;
     }
     
-    return 1;
+    return 0;
 }
 

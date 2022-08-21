@@ -32,6 +32,22 @@ For function "redeem", remaining inputs should be
 	index      -- index of the output within that tx.
 	wif        -- private key that will be used to redeem this output.
 	address    -- your address where you will put the redeemed sats.
+	
+wallet file format is json: 
+
+{
+  'prevouts': [
+    {
+      'txid': <hex string>       // 
+      'index': <number>          // 
+      'value': <number>          //
+      'script': <hex string>     //
+    }, 
+    ...                          // any number of these.
+  ], 
+  'key': <hd priv key string>    //
+  'index': <number>              //
+}
 ```
 
 
