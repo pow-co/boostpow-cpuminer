@@ -5,24 +5,12 @@
 const double maximum_mining_difficulty = 2.2;
 const double minimum_price_per_difficulty_sats = 1000000;
 
-Bitcoin::satoshi calculate_fee(
-    size_t inputs_size, 
-    size_t pay_script_size, 
-    double fee_rate) {
-
-    return inputs_size                              // inputs
-        + 4                                         // tx version
-        + 1                                         // var int value 1 (number of outputs)
-        + 8                                         // satoshi value size
-        + Bitcoin::var_int::size(pay_script_size)   // size of output script size
-        + pay_script_size                           // output script size
-        + 4;                                        // locktime
-
-}
-
 // A cpu miner function. 
 work::proof cpu_solve(const work::puzzle& p, const work::solution& initial, double max_time_seconds) {
     using uint256 = Gigamonkey::uint256;
+    
+    uint32 initial_time = initial.Share.Timestamp.Value;
+    uint32 local_initial_time = Bitcoin::timestamp::now().Value;
     
     //if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
     
@@ -57,7 +45,7 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial, doub
             });
 
         } else if (pr.Solution.Share.Nonce % display_increment == 0) {
-            pr.Solution.Share.Timestamp = Bitcoin::timestamp::now();
+            pr.Solution.Share.Timestamp.Value = initial_time + uint32(Bitcoin::timestamp::now().Value - local_initial_time);
             
             if (uint32(pr.Solution.Share.Timestamp) - begin > max_time_seconds) return {};
         }
@@ -77,7 +65,7 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial, doub
     return pr;
 }
 
-boost_prevouts select(map<digest256, boost_prevouts> puzzles, double minimum_profitability) {
+boost_prevouts miner::select(map<digest256, boost_prevouts> puzzles, double minimum_profitability) {
     
     if (puzzles.size() == 0) return {};
     
@@ -85,7 +73,7 @@ boost_prevouts select(map<digest256, boost_prevouts> puzzles, double minimum_pro
     for (const auto &p : puzzles) if (p.Value.profitability() > minimum_profitability) 
         total_profitability += (p.Value.profitability() - minimum_profitability);
     
-    double random = random_range01(data::get_random_engine()) * total_profitability;
+    double random = Random.range01() * total_profitability;
     
     double accumulated_profitability = 0;
     for (const auto &p : puzzles) if (p.Value.profitability() > minimum_profitability) {
@@ -96,6 +84,21 @@ boost_prevouts select(map<digest256, boost_prevouts> puzzles, double minimum_pro
     
     // shouldn't happen. 
     return {};
+}
+
+Bitcoin::satoshi calculate_fee(
+    size_t inputs_size, 
+    size_t pay_script_size, 
+    double fee_rate) {
+
+    return inputs_size                              // inputs
+        + 4                                         // tx version
+        + 1                                         // var int value 1 (number of outputs)
+        + 8                                         // satoshi value size
+        + Bitcoin::var_int::size(pay_script_size)   // size of output script size
+        + pay_script_size                           // output script size
+        + 4;                                        // locktime
+
 }
 
 json solution_to_json(work::solution x) {
@@ -114,7 +117,7 @@ json solution_to_json(work::solution x) {
     };
 }
 
-bytes mine(
+Bitcoin::transaction miner::mine(
     // an unredeemed Boost PoW output 
     Boost::puzzle puzzle, 
     // the address you want the bitcoins to go to once you have redeemed the boost output.
@@ -140,20 +143,18 @@ bytes mine(
     if (puzzle.profitability() < minimum_price_per_difficulty_sats)
       std::cout << "warning: price per difficulty " << puzzle.profitability() << " may be too low." << std::endl;
     
-    auto generator = data::get_random_engine();
-    
-    Stratum::session_id extra_nonce_1{random_uint32(generator)};
-    uint64_big extra_nonce_2{random_uint64(generator)};
+    Stratum::session_id extra_nonce_1{Random.uint32()};
+    uint64_big extra_nonce_2{Random.uint64()};
     
     work::solution initial{timestamp::now(), 0, bytes_view(extra_nonce_2), extra_nonce_1};
     
-    if (puzzle.use_general_purpose_bits()) initial.Share.Bits = random_uint32(generator);
+    if (puzzle.use_general_purpose_bits()) initial.Share.Bits = Random.uint32();
     
     work::proof proof = ::cpu_solve(work::puzzle(puzzle), initial, max_time_seconds);
     if (!proof.valid()) return {};
-
+    
     bytes pay_script = pay_to_address::script(address.Digest);
-
+    
     double fee_rate = 0.5;
 
     Bitcoin::satoshi fee = calculate_fee(puzzle.expected_size(), pay_script.size(), fee_rate);
@@ -177,16 +178,16 @@ bytes mine(
         std::string redeemhex = data::encoding::hex::write(redeem_script);
         
         logger::log("job.complete.redeemscript", json {
-        {"solution", solution_to_json(proof.Solution)},
-        {"asm", Bitcoin::ASM(redeem_script)},
-        {"hex", redeemhex},
-        {"fee", fee},
-        {"txid", txid_stream.str().substr(7, 66)}
+            {"solution", solution_to_json(proof.Solution)},
+            {"asm", Bitcoin::ASM(redeem_script)},
+            {"hex", redeemhex},
+            {"fee", fee},
+            {"txid", txid_stream.str().substr(7, 66)}
         });
     }
 
     // the transaction 
-    return redeem_tx;
+    return redeem;
     
 }
 

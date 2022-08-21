@@ -1,19 +1,17 @@
-#include <gigamonkey/boost/boost.hpp>
+
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/p2p/var_int.hpp>
-#include <gigamonkey/mapi/mapi.hpp>
+#include <network.hpp>
 #include <ctime>
+#include <wallet.hpp>
 #include <logger.hpp>
 #include <random.hpp>
 #include <keys.hpp>
-#include <pow_co_api.hpp>
 #include <miner.hpp>
 
 using namespace Gigamonkey;
-using nlohmann::json;
 
-int command_spend(int arg_count, char** arg_values) {
-    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
+Boost::output_script read_output_script(int arg_count, char** arg_values) {
     
     string content_hash_hex{arg_values[0]};
     
@@ -45,9 +43,7 @@ int command_spend(int arg_count, char** arg_values) {
     // a difficulty of 1/1000 should be easy to do on a cpu quickly. 
     // Difficulty 1 is the difficulty of the genesis block. 
     work::compact target{work::difficulty{diff}};
-    if (!target.valid()) throw (string{"could not read difficulty: "} + difficulty_input);
-    
-    //std::cout << "target: " << target << std::endl;
+    if (!target.valid()) throw (std::string{"could not read difficulty: "} + difficulty_input);
     
     // Tag/topic does not need to be anything. 
     string topic{arg_values[2]};
@@ -64,7 +60,7 @@ int command_spend(int arg_count, char** arg_values) {
     
     // User nonce is for ensuring that no two scripts are identical. 
     // You can increase the bounty for a boost by making an identical script. 
-    uint32_little user_nonce{random_uint32(get_random_engine())};
+    uint32_little user_nonce{BoostPOW::casual_random{}.uint32()};
     
     // we are using version 1 for now. 
     // we will use version 2 when we know we have Stratum extensions right. 
@@ -130,15 +126,21 @@ int command_spend(int arg_count, char** arg_values) {
             }}
         });
     }
+    
+    return output_script;
+}
 
+int command_spend(int arg_count, char** arg_values) {
+    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
+    
     std::cout << "To spend to this job, paste into electrum-sv: \"" << 
-        typed_data::write(typed_data::mainnet, output_script_bytes) << "\"" << std::endl;
+        typed_data::write(typed_data::mainnet, read_output_script(arg_count, arg_values).write()) << "\"" << std::endl;
     
     return 0;
 }
 
 int command_redeem(int arg_count, char** arg_values) {
-    if (arg_count != 6) throw "invalid number of arguments; should be 6";
+    if (arg_count != 6) throw std::string{"invalid number of arguments; should be 6"};
     
     string arg_script{arg_values[0]};
     string arg_value{arg_values[1]};
@@ -182,16 +184,17 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    bytes redeem_tx = mine(
+    Bitcoin::transaction redeem_tx = miner{}.mine(
         Boost::puzzle{{
             Boost::prevout{
                 Bitcoin::outpoint{txid, index}, 
                 Boost::output{Bitcoin::satoshi{value}, boost_script}}
         }, key}, address);
     
-    std::string redeem_txhex = data::encoding::hex::write(redeem_tx);
+    bytes redeem_tx_raw = bytes(redeem_tx);
+    std::string redeem_txhex = data::encoding::hex::write(redeem_tx_raw);
     
-    auto redeem_txid = Bitcoin::Hash256(redeem_tx);
+    auto redeem_txid = Bitcoin::Hash256(redeem_tx_raw);
     std::stringstream txid_stream;
     txid_stream << redeem_txid;
     
@@ -200,11 +203,7 @@ int command_redeem(int arg_count, char** arg_values) {
       {"txhex", redeem_txhex}
     });
     
-    boost::asio::io_context io;
-    networking::HTTP http{io};
-    whatsonchain whatsonchain_API{http};
-    
-    whatsonchain_API.transaction().broadcast(redeem_tx);
+    network{}.broadcast(redeem_tx_raw);
     
     return 0;
 }
@@ -241,19 +240,12 @@ int command_mine(int arg_count, char** arg_values) {
         else throw string{"could not read signing key"};
     }
     
-    boost::asio::io_context io;
-    
-    networking::HTTP http{io};
-    
-    pow_co pow_co_API{http};
-    
-    whatsonchain whatsonchain_API{http};
-    
-    BitcoinAssociation::MAPI gorilla{http, networking::REST{"https", "mapi.gorillapool.io"}};
+    network net{};
+    miner Miner{};
     
     try {
         while(true) {
-            list<Boost::prevout> jobs = pow_co_API.jobs();
+            list<Boost::prevout> jobs = net.PowCo.jobs();
             std::cout << "read " << jobs.size() << " jobs from pow.co/api/v1/jobs/" << std::endl;
             
             set<digest256> script_hashes;
@@ -273,7 +265,7 @@ int command_mine(int arg_count, char** arg_values) {
                 std::cout << " Checking script with hash " << script_hash << " in \n\t" << 
                     job.outpoint() << " on whatsonchain.com" << std::endl;
                 
-                auto script_utxos = whatsonchain_API.script().get_unspent(script_hash);
+                auto script_utxos = net.WhatsOnChain.script().get_unspent(script_hash);
                 
                 // is the current job in the list from whatsonchain? 
                 bool match_found = false;
@@ -294,21 +286,21 @@ int command_mine(int arg_count, char** arg_values) {
                 
                     std::cout << " checking script redeption against pow.co/api/v1/spends/ ...";
                     
-                    auto inpoint = pow_co_API.spends(job.outpoint());
+                    auto inpoint = net.PowCo.spends(job.outpoint());
                     if (!inpoint.valid()) {
                         std::cout << " No redemption found at pow.co." << std::endl;
                         std::cout << " checking whatsonchain history." << std::endl;
-                        auto script_history = whatsonchain_API.script().get_history(script_hash);
+                        auto script_history = net.WhatsOnChain.script().get_history(script_hash);
                         
                         std::cout << " " << script_history.size() << " transactions returned; " << std::endl;
                         
                         for (const Bitcoin::txid &history_txid : script_history) {
-                            Bitcoin::transaction history_tx{whatsonchain_API.transaction().get_raw(history_txid)};
+                            Bitcoin::transaction history_tx{net.WhatsOnChain.transaction().get_raw(history_txid)};
                             if (!history_tx.valid()) std::cout << "  could not find tx " << history_txid << std::endl;
                             
                             for (const Bitcoin::input &in: history_tx.Inputs) if (in.Reference == job.outpoint()) {
                                 std::cout << "  Redemption found on whatsonchain.com at " << history_txid << std::endl;
-                                pow_co_API.submit_proof(history_txid);
+                                net.PowCo.submit_proof(history_txid);
                                 goto redemption_found;
                             }
                             
@@ -318,7 +310,7 @@ int command_mine(int arg_count, char** arg_values) {
                         
                     } else {
                         std::cout << " Redemption found" << std::endl;
-                        pow_co_API.submit_proof(inpoint.Digest);
+                        net.PowCo.submit_proof(inpoint.Digest);
                     }
                 }
                 
@@ -337,14 +329,14 @@ int command_mine(int arg_count, char** arg_values) {
             
             std::cout << "About to start mining!" << std::endl;
             
-            bytes redeem_tx = mine(prevouts_to_puzzle(select(prevouts), signing_keys->next()), receiving_addresses->next(), 900);
-            if (redeem_tx == bytes{}) {
+            Bitcoin::transaction redeem_tx = 
+                Miner.mine(prevouts_to_puzzle(Miner.select(prevouts), signing_keys->next()), receiving_addresses->next(), 900);
+            if (!redeem_tx.valid()) {
                 std::cout << "proceeding to call the API again" << std::endl;
                 continue;
             }
             
-            whatsonchain_API.transaction().broadcast(redeem_tx);
-            gorilla.submit_transaction({redeem_tx});
+            net.broadcast(bytes(redeem_tx));
             
         }
     } catch (const networking::HTTP::exception &exception) {
@@ -376,13 +368,13 @@ int help() {
         "\nFor function \"mine\", remaining inputs should be "
         "\n\tkey        -- WIF or HD private key that will be used to redeem outputs."
         "\n\taddress    -- (optional) your address where you will put the redeemed sats."
-        "\n\t              If not provided, addresses will be generated from the key. "<< std::endl;
+        "\n\t              If not provided, addresses will be generated from the key. " << std::endl;
     
     return 0;
 }
 
 int main(int arg_count, char** arg_values) {
-	if(arg_count ==1) return help();
+    if(arg_count == 1) return help();
     //if (arg_count != 5) return help();
     
     string function{arg_values[1]};
@@ -393,10 +385,11 @@ int main(int arg_count, char** arg_values) {
         if (function == "mine") return command_mine(arg_count - 2, arg_values + 2);
         if (function == "help") return help();
         help();
-    } catch (string x) {
+    } catch (std::string x) {
         std::cout << "Error: " << x << std::endl;
+        return 1;
     }
     
-    return 1;
+    return 0;
 }
 
