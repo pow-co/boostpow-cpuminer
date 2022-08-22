@@ -22,8 +22,9 @@ class BoostMinerConan(ConanFile):
 
     def build(self):
         cmake = CMake(self)
-        cmake.configure(source_folder="src")
+        cmake.configure()
         cmake.build()
 
     def package(self):
         self.copy("BoostMiner", dst="bin", keep_path=False)
+        

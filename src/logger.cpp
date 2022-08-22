@@ -1,7 +1,4 @@
-#include <boost/date_time.hpp>
-#include <nlohmann/json.hpp>
-
-using nlohmann::json;
+#include <logger.hpp>
 
 namespace logger {
 
