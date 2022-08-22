@@ -86,33 +86,6 @@ work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
     return pr;
 }
 
-// Some stuff having to do with random number generators. We do not need 
-// strong cryptographic random numbers for boost. It is fine to use 
-// basic random number generators that you would use in a game or something. 
-template <typename engine>
-double random_range01(engine& gen) {
-    static std::uniform_real_distribution<double> dis(0.0, 1.0);
-    return dis(gen);
-}
-
-template <typename engine>
-data::uint64 random_uint64(engine& gen) {
-    static std::uniform_int_distribution<data::uint64> dis(
-        std::numeric_limits<data::uint64>::min(),
-        std::numeric_limits<data::uint64>::max()
-    );
-    return dis(gen);
-}
-
-template <typename engine>
-data::uint32 random_uint32(engine& gen) {
-    static std::uniform_int_distribution<data::uint32> dis(
-        std::numeric_limits<data::uint32>::min(),
-        std::numeric_limits<data::uint32>::max()
-    );
-    return dis(gen);
-}
-
 Boost::output_script read_output_script(int arg_count, char** arg_values) {
     
     string content_hash_hex{arg_values[0]};
@@ -169,18 +142,18 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     
     // we are using version 1 for now. 
     // we will use version 2 when we know we have Stratum extensions right. 
-
+    
     // This has to do with whether we use boost v2 which
     // incorporates bip320 which is necessary for ASICBoost. 
     // This is not necessary for CPU mining. 
     bool use_general_purpose_bits = false;
     
     Boost::output_script output_script;
-
+    
     // If you use a bounty script, other people can 
     // compete with you to mine a boost output if you 
     // broadcast it before you broadcast the solution. 
-
+    
     // If you use a contract script, then you are the only
     // one who can mine that boost output. 
     if (arg_count == 4) {

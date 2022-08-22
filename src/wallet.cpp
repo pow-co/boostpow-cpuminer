@@ -28,12 +28,67 @@ Bitcoin::satoshi wallet::value() const {
     }, Bitcoin::satoshi{0}, Prevouts);
 }
 
-wallet::spent wallet::spend(Bitcoin::output to, satoshis_per_byte) {
-    throw "unimplemented";
+uint64 redeem_script_size(bool compressed_pubkey) {
+    return compressed_pubkey ? 33 : 65;
 }
 
-wallet wallet::add(const prevout &) {
-    throw "unimplemented";
+constexpr uint64 p2sh_script_size = 24;
+
+constexpr int64 dust = 500;
+
+wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) {
+    wallet w = *this;
+    
+    uint64 expected_size = 
+        to.serialized_size() + // size of this output
+        // size of change output.
+        p2sh_script_size + Gigamonkey::Bitcoin::var_int::size(p2sh_script_size) + 8 + 
+        10; // version, locktime, and number of outputs and inputs.
+    
+    int64 amount_spent = 0;
+    int64 amount_sent = to.Value;
+    
+    // select prevouts 
+    list<prevout> prevouts{};
+    
+    do {
+        if (data::empty(w.Prevouts)) throw "insufficient funds";
+        
+        number_of_inputs = prevouts.size();
+        
+        amount_spent += w.Prevouts.first().Value;
+        
+        prevouts <<= w.Prevouts.first();
+        w.Prevouts = w.Prevouts.rest();
+        
+        expected_size += redeem_script_size - 
+            Gigamonkey::Bitcoin::var_int::size(number_of_inputs) + 
+            Gigamonkey::Bitcoin::var_int::size(number_of_inputs + 1);
+        
+    } while (amount_sent + satoshis_per_byte * expected_size < amount_spent + dust);
+    
+    // generate change script
+    auto xpriv = w.Master.derive(w.Index);
+    bytes change_script = Gigamonkey::pay_to_address::script(xpriv.address())};
+    w.Index++:
+    
+    // calculate fee 
+    
+    // make signatures 
+    
+    // create tx. 
+    
+    // update wallet with new prevout
+    
+    return spent{w, tx};
+}
+
+wallet wallet::add(const prevout &p) {
+    return wallet{
+        Prevouts << p, 
+        Master, 
+        Index
+    };
 }
 
 wallet::operator json() const {
