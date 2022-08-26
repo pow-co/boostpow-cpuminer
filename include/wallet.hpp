@@ -2,6 +2,8 @@
 #define BOOSTMINER_WALLET
 
 #include <gigamonkey/boost/boost.hpp>
+#include <gigamonkey/wif.hpp>
+#include <gigamonkey/schema/hd.hpp>
 
 using namespace Gigamonkey;
 using nlohmann::json;
@@ -14,25 +16,25 @@ struct wallet {
         data::uint32 Index;
         Bitcoin::satoshi Value;
         
-        Gigamonkey::Bitcoin::wif Key;
+        Gigamonkey::Bitcoin::secret Key;
         
         Bitcoin::satoshi value() const;
     
         operator json() const;
         
-        static wallet read(const json&);
+        static prevout read(const json&);
         
     };
     
     list<prevout> Prevouts;
-    hd::bip32::secret Master;
+    Bitcoin::hd::bip32::secret Master;
     data::uint32 Index;
     
     Bitcoin::satoshi value() const;
     
     struct spent;
     
-    spent spend(Bitcoin::output to, satoshis_per_byte);
+    spent spend(Bitcoin::output to, double satoshis_per_byte);
     wallet add(const prevout &);
     
     operator json() const;
@@ -42,7 +44,7 @@ struct wallet {
 };
 
 struct wallet::spent {
-    wallet Wallet
+    wallet Wallet;
     Bitcoin::transaction Transaction;
 };
 

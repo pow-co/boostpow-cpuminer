@@ -1,14 +1,15 @@
 #include <wallet.hpp>
 
 wallet::prevout::operator json() const {
+    throw 0;/*
     return json{
-        {"wif", string(Key)}, 
+        {"wif", Key.write()}, 
         {"txid", string(TXID)}, 
         {"index", index}, 
-        {"value", int64(value)}};
+        {"value", int64(value)}};*/
 }
         
-prevout wallet::prevout::read(const json&) {
+wallet::prevout wallet::prevout::read(const json &j) {
     if (j.size() != 4 || !j.contains("wif") || !j.contains("txid") || !j.contains("index") || !j.contains("value")) throw "invalid prevout format";
     
     return prevout {
@@ -17,13 +18,13 @@ prevout wallet::prevout::read(const json&) {
         data::uint32(j["index"]), 
         Bitcoin::satoshi(int64(j["value"])), 
         
-        Gigamonkey::Bitcoin::wif{j["wif"]};
+        Gigamonkey::Bitcoin::secret{string(j["wif"])}
     };
     
 }
 
 Bitcoin::satoshi wallet::value() const {
-    data::fold([](Bitcoin::satoshi x, const prevout &p) -> Bitcoin::satoshi {
+    return data::fold([](Bitcoin::satoshi x, const prevout &p) -> Bitcoin::satoshi {
         return x + p.Value;
     }, Bitcoin::satoshi{0}, Prevouts);
 }
@@ -37,6 +38,8 @@ constexpr uint64 p2sh_script_size = 24;
 constexpr int64 dust = 500;
 
 wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) {
+    throw 0;
+    /*
     wallet w = *this;
     
     uint64 expected_size = 
@@ -80,7 +83,7 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) {
     
     // update wallet with new prevout
     
-    return spent{w, tx};
+    return spent{w, tx};*/
 }
 
 wallet wallet::add(const prevout &p) {
@@ -94,7 +97,7 @@ wallet wallet::add(const prevout &p) {
 wallet::operator json() const {
     json::array_t prevouts;
     
-    for (const prevout &p : Prevouts) {prevouts.push(json(p))};
+    for (const prevout &p : Prevouts) prevouts.push_back(json(p));
     
     return json{
         {"prevouts", prevouts}, 
@@ -102,18 +105,18 @@ wallet::operator json() const {
         {"index", Index}};
 }
     
-static wallet wallet::read(const json &j) {
+wallet wallet::read(const json &j) {
     if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) throw "invalid wallet format";
     
     auto pp = j["prevouts"];
     list<prevout> prevouts;
     for (const json p: pp) prevouts <<= prevout::read(p);
     
-    return wallet{prevouts, hd::bip32::secret{string(j["master"])}, data::uint32(j["index"]);
+    return wallet{prevouts, Bitcoin::hd::bip32::secret{string(j["master"])}, data::uint32(j["index"])};
 }
 
 bool broadcast(const Bitcoin::transaction &t) {
-    std::cout << "Please broadcast this transaction: " << data::encoding::hex::write(t.write());
+    std::cout << "Please broadcast this transaction: " << data::encoding::hex::write(bytes(t));
     std::cout << "How did it go? Y/N" << std::endl;
     
     char response;
@@ -126,6 +129,8 @@ bool broadcast(const Bitcoin::transaction &t) {
 }
 
 wallet read_from_file(const std::string &filename) {
+    throw 0;
+    /*
     std::ifstream myfile{filename};
     std::string contents;
     
@@ -133,12 +138,14 @@ wallet read_from_file(const std::string &filename) {
     
     myfile >> contents;  
     
-    return wallet::read(json::parse(mystring));
+    return wallet::read(json::parse(mystring));*/
 }
 
 bool write_to_file(const wallet &w, const std::string &filename) {
+    throw 0;
+    /*
     ofstream myfile {filename}; //open is the method of ofstream
     if ( !myfile.is_open() ) throw std::string{"could not open file"} + filename;
     o << json(w);
-    o.close();
+    o.close();*/
 }

@@ -1,7 +1,8 @@
 #include <gigamonkey/boost/boost.hpp>
 #include <ctime>
 #include <wallet.hpp>
-#include "./logger.cpp"
+#include <logger.hpp>
+#include <random.hpp>
 
 using namespace Gigamonkey;
 using nlohmann::json;
@@ -9,28 +10,28 @@ using nlohmann::json;
 constexpr double default_fee_rate = 0.5;
 
 Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_script, double fee_rate) {
-
-  Boost::output_script output_script{prevout.value().Script};
-
-  data::uint32 estimated_tx_size
-    = 4                  // tx version
-    + 1                  // var int value 1 (to say how many inputs there are)
-    + 36                 // outpoint
-                         // input script size with signature max size
-    + Boost::input_script::expected_size(output_script.Type, output_script.UseGeneralPurposeBits)
-    + 4                  // sequence number
-    + 1                  // var int value 1 (number of outputs)
-    + 8                  // satoshi value size
-    + pay_script.size()  // output script size
-    + 4;                 // locktime
-
-  Bitcoin::satoshi spent = prevout.Value.Value;
-
-  Bitcoin::satoshi fee = ceil(estimated_tx_size * fee_rate);
-
-  if (fee > spent) throw "Cannot pay tx fee with boost output";
-
-  return fee;
+    
+    Boost::output_script output_script{prevout.value().Script};
+    
+    data::uint32 estimated_tx_size
+        = 4                  // tx version
+        + 1                  // var int value 1 (to say how many inputs there are)
+        + 36                 // outpoint
+                            // input script size with signature max size
+        + Boost::input_script::expected_size(output_script.Type, output_script.UseGeneralPurposeBits)
+        + 4                  // sequence number
+        + 1                  // var int value 1 (number of outputs)
+        + 8                  // satoshi value size
+        + pay_script.size()  // output script size
+        + 4;                 // locktime
+    
+    Bitcoin::satoshi spent = prevout.Value.Value;
+    
+    Bitcoin::satoshi fee = ceil(estimated_tx_size * fee_rate);
+    
+    if (fee > spent) throw "Cannot pay tx fee with boost output";
+    
+    return fee;
 }
 
 // A cpu miner function. 
@@ -170,7 +171,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
           {"difficulty", diff},
           {"content", content_hash_hex},
           {"script", {
-            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
+            {"asm",Bitcoin::ASM(output_script.write())},
             {"hex",output_script.write()}
           }}
       });
@@ -194,7 +195,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
           {"content", content_hash_hex},
           {"miner", arg_values[4]},
           {"script", {
-            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
+            {"asm",Bitcoin::ASM(output_script.write())},
             {"hex",output_script.write()}
           }}
       });
@@ -203,9 +204,9 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     return output_script;
 }
 
-int spend(int arg_count, char** arg_values) {
+int command_spend(int arg_count, char** arg_values) {
     if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
-    read_output(arg_count, arg_values);
+    read_output_script(arg_count, arg_values);
     return 0;
 }
 
@@ -227,7 +228,7 @@ json solution_to_json(work::solution x) {
 
 Bitcoin::transaction mine(
     // an unredeemed Boost PoW output 
-    prevout prevout, 
+    Bitcoin::ledger::prevout prevout, 
     // The private key that you will use to redeem the boost output. This key 
     // corresponds to 'miner address' in the Boost PoW protocol. 
     Bitcoin::secret private_key, 
@@ -276,8 +277,9 @@ Bitcoin::transaction mine(
     
     // signature
     signature signature = private_key.sign( 
-        signature::document{
-            prevout.value(),         // output being redeemed
+        sighash::document{
+            prevout.value().Value,   // output being redeemed
+            prevout.value().Script,
             incomplete,              // the incomplete tx
             0});                     // index of input that will contain this signature
     
@@ -292,7 +294,7 @@ Bitcoin::transaction mine(
     
     logger::log("job.complete.redeemscript", json {
       {"solution", solution_to_json(proof.Solution)},
-      {"asm", interpreter::ASM(input_script.write())},
+      {"asm", ASM(input_script.write())},
       {"hex", redeemhexstring },
       {"fee", fee}
     });
@@ -302,7 +304,7 @@ Bitcoin::transaction mine(
     
 }
 
-int redeem(int arg_count, char** arg_values) {
+int command_redeem(int arg_count, char** arg_values) {
     if (arg_count != 6) throw "invalid number of arguments; should be 6";
     
     string arg_script{arg_values[0]};
@@ -346,7 +348,7 @@ int redeem(int arg_count, char** arg_values) {
         key, address);
 
 
-    std::string txhex = data::encoding::hex::write(tx.write());
+    std::string txhex = data::encoding::hex::write(bytes(tx));
 
     logger::log("job.complete.transaction", json {
       {"txhex", txhex}
@@ -355,11 +357,12 @@ int redeem(int arg_count, char** arg_values) {
     return 0;
 }
 
-int boost(int arg_count, char** arg_values) {
+int command_boost(int arg_count, char** arg_values) {
     
     if (arg_count < 6 || arg_count > 7) throw "invalid number of arguments; should be 4 or 5";
     
-    auto w = read_from_file(string{arg_values[0]});
+    std::string filename{arg_values[0]};
+    auto w = read_from_file(filename);
     
     string arg_value{arg_values[1]};
     
@@ -370,21 +373,39 @@ int boost(int arg_count, char** arg_values) {
     
     if (value > w.value()) throw "insufficient funds";
     
-    Bitcoin::output_script output_script = read_output_script(arg_count - 2, arg_values + 2);
+    Boost::output_script boost_output_script = read_output_script(arg_count - 2, arg_values + 2);
+    Bitcoin::output bitcoin_output{value, boost_output_script.write()};
     
-    auto spend = w.spend(Bitcoin::output{value, output_script.write()});
+    auto spend = w.spend(bitcoin_output, default_fee_rate);
+    
+    uint32 boost_output_index = 0;
+    // where is the output script? 
+    for (const Bitcoin::output &o : spend.Transaction.Outputs) {
+        if (o == bitcoin_output) break;
+        boost_output_index++;
+    }
+    
+    if (boost_output_index == spend.Transaction.Outputs.size()) throw "could not find boost output index";
     
     broadcast(spend.Transaction);
     
-    write_to_file(spend.Wallet);
+    write_to_file(spend.Wallet, filename);
     
     w = spend.Wallet;
     
-    Bitcoin::transaction redeem = mine(w.Prevout, w.Key, w.Key.Address);
+    Bitcoin::secret miner_key = Bitcoin::secret(w.Master.derive(w.Index));
+    Bitcoin::secret spend_key = Bitcoin::secret(w.Master.derive(w.Index + 1));
+    
+    w.Index += 2;
+    
+    Bitcoin::transaction redeem = mine(
+        Bitcoin::ledger::prevout{
+            Bitcoin::outpoint{spend.Transaction.id(), boost_output_index}, 
+            bitcoin_output}, miner_key, spend_key.address());
     
     broadcast(redeem);
     
-    write_to_file(w.add());
+    write_to_file(w.add(wallet::prevout{redeem.id(), 0, redeem.Outputs[0].Value, spend_key}), filename);
     
     return 0;
 }
@@ -414,7 +435,7 @@ int help() {
         "\n\tdifficulty -- "
         "\n\ttopic      -- string max 20 bytes."
         "\n\tadd. data  -- string, any size."
-        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
+        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty.";
     
     return 0;
 }
@@ -426,9 +447,9 @@ int main(int arg_count, char** arg_values) {
     string function{arg_values[1]};
     
     try {
-        if (function == "spend") return spend(arg_count - 2, arg_values + 2);
-        if (function == "redeem") return redeem(arg_count - 2, arg_values + 2);
-        if (function == "boost") return boost(arg_count - 2, arg_values + 2);
+        if (function == "spend") return command_spend(arg_count - 2, arg_values + 2);
+        if (function == "redeem") return command_redeem(arg_count - 2, arg_values + 2);
+        if (function == "boost") return command_boost(arg_count - 2, arg_values + 2);
         if (function == "help") return help();
         help();
     } catch (string x) {

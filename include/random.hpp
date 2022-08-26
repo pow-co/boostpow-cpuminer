@@ -1,5 +1,8 @@
-#ifndef BOOSTMINER_LOGGER
-#define BOOSTMINER_LOGGER
+#ifndef BOOSTMINER_RANDOM
+#define BOOSTMINER_RANDOM
+
+#include <gigamonkey/types.hpp>
+using namespace Gigamonkey;
 
 // Some stuff having to do with random number generators. We do not need 
 // strong cryptographic random numbers for boost. It is fine to use 
@@ -7,6 +10,7 @@
 template <typename engine>
 double random_range01(engine& gen) {
     static std::uniform_real_distribution<double> dis(0.0, 1.0);
+    
     return dis(gen);
 }
 
@@ -16,6 +20,7 @@ data::uint64 random_uint64(engine& gen) {
         std::numeric_limits<data::uint64>::min(),
         std::numeric_limits<data::uint64>::max()
     );
+    
     return dis(gen);
 }
 
@@ -25,6 +30,7 @@ data::uint32 random_uint32(engine& gen) {
         std::numeric_limits<data::uint32>::min(),
         std::numeric_limits<data::uint32>::max()
     );
+    
     return dis(gen);
 }
 
