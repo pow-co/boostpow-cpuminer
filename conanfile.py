@@ -22,7 +22,7 @@ class BoostMinerConan(ConanFile):
 
     def build(self):
         cmake = CMake(self)
-        cmake.configure(source_folder="src")
+        cmake.configure()
         cmake.build()
 
     def package(self):
