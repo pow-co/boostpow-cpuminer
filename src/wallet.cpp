@@ -1,18 +1,32 @@
 #include <wallet.hpp>
+#include <gigamonkey/fees.hpp>
 
-wallet::prevout::operator json() const {
-    throw 0;/*
-    return json{
-        {"wif", Key.write()}, 
-        {"txid", string(TXID)}, 
-        {"index", index}, 
-        {"value", int64(value)}};*/
+std::ostream &write_json(std::ostream &o, const p2pkh_prevout &p) {
+    return o << "{\"wif\": \"" << Key << "\", \"txid\": \"" << TXID << "\", \"index\": " << index << ", \"value\": " << int64(value) << "}";
 }
-        
-wallet::prevout wallet::prevout::read(const json &j) {
-    if (j.size() != 4 || !j.contains("wif") || !j.contains("txid") || !j.contains("index") || !j.contains("value")) throw "invalid prevout format";
+
+std::ostream &write_json(std::ostream &o, const wallet &p) {
     
-    return prevout {
+    o << "{\"prevouts\": [";
+    
+    list<p2pkh_prevout> p = Prevouts;
+    
+    if (!data::empty(p)) while (true) {
+        write_json(o, data::first(p));
+        
+        if (data::empty(p)) break;
+        o << ", ";
+    }
+    
+    return o << "], \"master\": \"" << Master << "\", \"index\": " << Index << "}";
+    
+}
+
+using nlohmann::json;
+
+p2pkh_prevout read_prevout(const json &j) {
+    
+    return p2pkh_prevout {
         
         Gigamonkey::digest256{string(j["txid"])}, 
         data::uint32(j["index"]), 
@@ -23,10 +37,30 @@ wallet::prevout wallet::prevout::read(const json &j) {
     
 }
 
+wallet read_json(std::istream &i) {
+    json j = json::parse(i);
+    
+    if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) throw "invalid wallet format";
+    
+    auto pp = j["prevouts"];
+    list<prevout> prevouts;
+    for (const json p: pp) prevouts <<= read_prevout(p);
+    
+    return wallet{prevouts, Bitcoin::hd::bip32::secret{string(j["master"])}, data::uint32(j["index"])};
+}
+
 Bitcoin::satoshi wallet::value() const {
     return data::fold([](Bitcoin::satoshi x, const prevout &p) -> Bitcoin::satoshi {
         return x + p.Value;
     }, Bitcoin::satoshi{0}, Prevouts);
+}
+
+wallet wallet::add(const p2pkh_prevout &p) {
+    return wallet{
+        Prevouts << p, 
+        Master, 
+        Index
+    };
 }
 
 uint64 redeem_script_size(bool compressed_pubkey) {
@@ -38,9 +72,12 @@ constexpr uint64 p2sh_script_size = 24;
 constexpr int64 dust = 500;
 
 wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) {
-    throw 0;
-    /*
-    wallet w = *this;
+    
+    list<p2pkh_prevout> prevouts = Prevouts;
+    
+    Gigamonkey::transaction_design {
+        
+    };
     
     uint64 expected_size = 
         to.serialized_size() + // size of this output
@@ -83,69 +120,5 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) {
     
     // update wallet with new prevout
     
-    return spent{w, tx};*/
-}
-
-wallet wallet::add(const prevout &p) {
-    return wallet{
-        Prevouts << p, 
-        Master, 
-        Index
-    };
-}
-
-wallet::operator json() const {
-    json::array_t prevouts;
-    
-    for (const prevout &p : Prevouts) prevouts.push_back(json(p));
-    
-    return json{
-        {"prevouts", prevouts}, 
-        {"master", string(Master)}, 
-        {"index", Index}};
-}
-    
-wallet wallet::read(const json &j) {
-    if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) throw "invalid wallet format";
-    
-    auto pp = j["prevouts"];
-    list<prevout> prevouts;
-    for (const json p: pp) prevouts <<= prevout::read(p);
-    
-    return wallet{prevouts, Bitcoin::hd::bip32::secret{string(j["master"])}, data::uint32(j["index"])};
-}
-
-bool broadcast(const Bitcoin::transaction &t) {
-    std::cout << "Please broadcast this transaction: " << data::encoding::hex::write(bytes(t));
-    std::cout << "How did it go? Y/N" << std::endl;
-    
-    char response;
-    
-    while (true) {
-        std::cin >> response;
-        if (response == 'y' || response == 'Y') return true;
-        if (response == 'n' || response == 'N') return false;
-    }
-}
-
-wallet read_from_file(const std::string &filename) {
-    throw 0;
-    /*
-    std::ifstream myfile{filename};
-    std::string contents;
-    
-    if ( !myfile.is_open() ) throw std::string{"could not open file"} + filename;
-    
-    myfile >> contents;  
-    
-    return wallet::read(json::parse(mystring));*/
-}
-
-bool write_to_file(const wallet &w, const std::string &filename) {
-    throw 0;
-    /*
-    ofstream myfile {filename}; //open is the method of ofstream
-    if ( !myfile.is_open() ) throw std::string{"could not open file"} + filename;
-    o << json(w);
-    o.close();*/
+    return spent{w, tx};
 }

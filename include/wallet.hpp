@@ -6,28 +6,23 @@
 #include <gigamonkey/schema/hd.hpp>
 
 using namespace Gigamonkey;
-using nlohmann::json;
+
+struct p2pkh_prevout {
+    
+    Gigamonkey::digest256 TXID;
+    data::uint32 Index;
+    Bitcoin::satoshi Value;
+    
+    Gigamonkey::Bitcoin::secret Key;
+    
+    Bitcoin::satoshi value() const;
+    
+};
 
 struct wallet {
-
-    struct prevout {
-        
-        Gigamonkey::digest256 TXID;
-        data::uint32 Index;
-        Bitcoin::satoshi Value;
-        
-        Gigamonkey::Bitcoin::secret Key;
-        
-        Bitcoin::satoshi value() const;
     
-        operator json() const;
-        
-        static prevout read(const json&);
-        
-    };
-    
-    list<prevout> Prevouts;
-    Bitcoin::hd::bip32::secret Master;
+    list<p2pkh_prevout> Prevouts;
+    hd::bip32::secret Master;
     data::uint32 Index;
     
     Bitcoin::satoshi value() const;
@@ -35,11 +30,11 @@ struct wallet {
     struct spent;
     
     spent spend(Bitcoin::output to, double satoshis_per_byte);
-    wallet add(const prevout &);
+    wallet add(const p2pkh_prevout &);
     
-    operator json() const;
+    operator std::string() const;
     
-    static wallet read(const json&);
+    static wallet read(std::string_view);
     
 };
 
@@ -48,10 +43,9 @@ struct wallet::spent {
     Bitcoin::transaction Transaction;
 };
 
+std::ostream &write_json(std::ostream &, wallet);
+wallet read_json(std::istream &);
+
 bool broadcast(const Bitcoin::transaction &t);
-
-wallet read_from_file(const std::string &filename);
-
-bool write_to_file(const wallet &, const std::string &filename);
 
 #endif

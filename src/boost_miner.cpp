@@ -5,7 +5,6 @@
 #include <random.hpp>
 
 using namespace Gigamonkey;
-using nlohmann::json;
 
 constexpr double default_fee_rate = 0.5;
 
