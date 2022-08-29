@@ -1,4 +1,5 @@
 #include <gigamonkey/boost/boost.hpp>
+#include <gigamonkey/ledger.hpp>
 #include <ctime>
 #include <wallet.hpp>
 #include <logger.hpp>
@@ -6,11 +7,9 @@
 
 using namespace Gigamonkey;
 
-constexpr double default_fee_rate = 0.5;
-
-Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_script, double fee_rate) {
+Bitcoin::satoshi calculate_fee(Bitcoin::prevout p, bytes pay_script, double fee_rate) {
     
-    Boost::output_script output_script{prevout.value().Script};
+    Boost::output_script output_script{p.script()};
     
     data::uint32 estimated_tx_size
         = 4                  // tx version
@@ -24,11 +23,11 @@ Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_scrip
         + pay_script.size()  // output script size
         + 4;                 // locktime
     
-    Bitcoin::satoshi spent = prevout.Value.Value;
+    Bitcoin::satoshi spent = p.Value.Value;
     
     Bitcoin::satoshi fee = ceil(estimated_tx_size * fee_rate);
     
-    if (fee > spent) throw "Cannot pay tx fee with boost output";
+    if (fee > spent) throw std::string{"Cannot pay tx fee with boost output"};
     
     return fee;
 }
@@ -37,15 +36,11 @@ Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_scrip
 work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
     using uint256 = Gigamonkey::uint256;
     
-    //if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
-    
     uint64_big extra_nonce_2; 
     std::copy(initial.Share.ExtraNonce2.begin(), initial.Share.ExtraNonce2.end(), extra_nonce_2.begin());
     
     uint256 target = p.Candidate.Target.expand();
     if (target == 0) return {};
-    //std::cout << " working " << p << std::endl;
-    //std::cout << " with target " << target << std::endl;
     
     uint256 best{"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
     
@@ -118,19 +113,17 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     // a difficulty of 1/1000 should be easy to do on a cpu quickly. 
     // Difficulty 1 is the difficulty of the genesis block. 
     work::compact target{work::difficulty{diff}};
-    if (!target.valid()) throw (string{"could not read difficulty: "} + difficulty_input);
-    
-    //std::cout << "target: " << target << std::endl;
+    if (!target.valid()) throw (std::string{"could not read difficulty: "} + difficulty_input);
     
     // Tag/topic does not need to be anything. 
     ptr<bytes> topic = encoding::hex::read(string{arg_values[2]});
-    if (topic == nullptr || topic->size() > 20) throw (string{"could not read topic: "} + string{arg_values[2]});
+    if (topic == nullptr || topic->size() > 20) throw (std::string{"could not read topic: "} + string{arg_values[2]});
     
     // additional data does not need to be anything but it 
     // can be used to provide information about a boost or
     // to add a comment. 
     ptr<bytes> additional_data = encoding::hex::read(string{arg_values[3]});
-    if (additional_data == nullptr) throw (string{"could not read additional_data: "} + string{arg_values[3]});
+    if (additional_data == nullptr) throw (std::string{"could not read additional_data: "} + string{arg_values[3]});
     
     // Category has no particular meaning. We could use it for
     // something like magic number if we wanted to imitate 21e8. 
@@ -176,7 +169,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
       });
     } else {
         Bitcoin::address miner_address{arg_values[4]};
-        if (!miner_address.valid()) throw (string{"could not read miner address: "} + string{arg_values[4]});
+        if (!miner_address.valid()) throw (std::string{"could not read miner address: "} + string{arg_values[4]});
         
         output_script = Boost::output_script::contract(
             category, 
@@ -204,7 +197,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
 }
 
 int command_spend(int arg_count, char** arg_values) {
-    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
+    if (arg_count < 4 || arg_count > 5) throw std::string{"invalid number of arguments; should be 4 or 5"};
     read_output_script(arg_count, arg_values);
     return 0;
 }
@@ -227,19 +220,19 @@ json solution_to_json(work::solution x) {
 
 Bitcoin::transaction mine(
     // an unredeemed Boost PoW output 
-    Bitcoin::ledger::prevout prevout, 
+    const Bitcoin::prevout &prev, 
     // The private key that you will use to redeem the boost output. This key 
     // corresponds to 'miner address' in the Boost PoW protocol. 
-    Bitcoin::secret private_key, 
+    const Bitcoin::secret &private_key, 
     // the address you want the bitcoins to go to once you have redeemed the boost output.
     // this is not the same as 'miner address'. This is just an address in your 
     // normal wallet and should not be the address that goes along with the key above.
-    Bitcoin::address address) {
+    const Bitcoin::address &address) {
     using namespace Bitcoin;
     
     // Is this a boost output? 
-    Boost::output_script output_script{prevout.value().Script}; 
-    if (!output_script.valid()) throw "Not a valid Boost output script";
+    Boost::output_script output_script{prev.script()}; 
+    if (!output_script.valid()) throw std::string{"Not a valid Boost output script"};
     
     // If this is a contract script, we need to check that the key we have been given corresponds 
     // to the miner address in the script. 
@@ -266,19 +259,19 @@ Bitcoin::transaction mine(
     work::proof proof = ::cpu_solve(work::puzzle(boost_puzzle), initial);
 
     bytes pay_script = pay_to_address::script(address.Digest);
-
-    Bitcoin::satoshi fee { calculate_fee(prevout, pay_script, default_fee_rate) };
+    
+    Bitcoin::satoshi fee { calculate_fee(prev, pay_script, wallet::default_fee_rate) };
     
     // the incomplete transaction 
     incomplete::transaction incomplete{ 
-        {incomplete::input{prevout.key()}}, // one incomplete input 
-        {output{prevout.Value.Value - fee, pay_script}}}; // one output 
+        {incomplete::input{prev.outpoint()}}, // one incomplete input 
+        {output{prev.value() - fee, pay_script}}}; // one output 
     
     // signature
-    signature signature = private_key.sign( 
+    Bitcoin::signature signature = private_key.sign( 
         sighash::document{
-            prevout.value().Value,   // output being redeemed
-            prevout.value().Script,
+            prev.value(),   // output being redeemed
+            prev.script(),
             incomplete,              // the incomplete tx
             0});                     // index of input that will contain this signature
     
@@ -288,8 +281,6 @@ Bitcoin::transaction mine(
     data::bytes redeemhex = input_script.write();
     
     std::string redeemhexstring = data::encoding::hex::write(redeemhex);
-    
-    //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
     
     logger::log("job.complete.redeemscript", json {
       {"solution", solution_to_json(proof.Solution)},
@@ -304,7 +295,7 @@ Bitcoin::transaction mine(
 }
 
 int command_redeem(int arg_count, char** arg_values) {
-    if (arg_count != 6) throw "invalid number of arguments; should be 6";
+    if (arg_count != 6) throw std::string{"invalid number of arguments; should be 6"};
     
     string arg_script{arg_values[0]};
     string arg_value{arg_values[1]};
@@ -314,22 +305,22 @@ int command_redeem(int arg_count, char** arg_values) {
     string arg_address{arg_values[5]};
     
     ptr<bytes> script = encoding::hex::read(arg_script);
-    if (script == nullptr) throw "could not read script"; 
+    if (script == nullptr) throw std::string{"could not read script"}; 
     
     int64 value;
     std::stringstream{arg_value} >> value;
     
     Bitcoin::txid txid{arg_txid};
-    if (!txid.valid()) throw "could not read txid";
+    if (!txid.valid()) throw std::string{"could not read txid"};
     
     uint32 index;
     std::stringstream{arg_index} >> index;
     
     Bitcoin::address address{arg_address};
-    if (!address.valid()) throw "could not read address";
+    if (!address.valid()) throw std::string{"could not read address"};
     
     Bitcoin::secret key{arg_wif};
-    if (!key.valid()) throw "could not read secret key";
+    if (!key.valid()) throw std::string{"could not read secret key"};
 
     logger::log("job.mine", json {
       {"script", arg_values[0]},
@@ -341,12 +332,11 @@ int command_redeem(int arg_count, char** arg_values) {
     });
     
     Bitcoin::transaction tx = mine(
-        Bitcoin::ledger::prevout{
+        Bitcoin::prevout{
             Bitcoin::outpoint{txid, index}, 
             Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
         key, address);
-
-
+    
     std::string txhex = data::encoding::hex::write(bytes(tx));
 
     logger::log("job.complete.transaction", json {
@@ -358,10 +348,10 @@ int command_redeem(int arg_count, char** arg_values) {
 
 int command_boost(int arg_count, char** arg_values) {
     
-    if (arg_count < 6 || arg_count > 7) throw "invalid number of arguments; should be 4 or 5";
+    if (arg_count < 4 || arg_count > 7) throw std::string{"invalid number of arguments; should at least 4 and at most 7"};
     
     std::string filename{arg_values[0]};
-    auto w = read_from_file(filename);
+    auto w = read_wallet_from_file(filename);
     
     string arg_value{arg_values[1]};
     
@@ -372,10 +362,54 @@ int command_boost(int arg_count, char** arg_values) {
     
     if (value > w.value()) throw "insufficient funds";
     
-    Boost::output_script boost_output_script = read_output_script(arg_count - 2, arg_values + 2);
+    string arg_content{arg_values[2]};
+    
+    digest256 content{arg_content};
+    if (!content.valid()) throw (string{"could not read content: "} + arg_content);
+    
+    double diff = 0;
+    string difficulty_input{arg_values[3]};
+    std::stringstream diff_stream{difficulty_input};
+    diff_stream >> diff;
+    
+    work::compact target{work::difficulty{diff}};
+    if (!target.valid()) throw (std::string{"could not read difficulty: "} + difficulty_input);
+    
+    bytes topic{};
+    bytes additional_data{};
+    
+    if (arg_count > 4) {
+    
+        ptr<bytes> topic_read = encoding::hex::read(string{arg_values[4]});
+        if (topic_read == nullptr || topic_read->size() > 20) throw (std::string{"could not read topic: "} + string{arg_values[4]});
+        topic = *topic_read;
+    }
+    
+    if (arg_count > 5) {
+        ptr<bytes> add_data = encoding::hex::read(string{arg_values[5]});
+        if (add_data == nullptr) throw (std::string{"could not read additional_data: "} + string{arg_values[5]});
+        additional_data = *add_data;
+    }
+    
+    Boost::type type = Boost::bounty;
+    
+    if (arg_count > 6) {
+        string boost_type{arg_values[6]};
+        if (boost_type == "contract") type = Boost::contract;
+        else if (boost_type != "bounty") throw (std::string{"could not boost type: "} + string{arg_values[6]});
+        
+    }
+    
+    if (type == Boost::contract) throw std::string{"We do not do boost contract yet"};
+    
+    Boost::output_script boost_output_script = Boost::output_script::bounty(
+        0, content, target, topic, 
+        random_uint32(get_random_engine()), 
+        additional_data, false);
+    
     Bitcoin::output bitcoin_output{value, boost_output_script.write()};
     
-    auto spend = w.spend(bitcoin_output, default_fee_rate);
+    auto spend = w.spend(bitcoin_output);
     
     uint32 boost_output_index = 0;
     // where is the output script? 
@@ -398,13 +432,18 @@ int command_boost(int arg_count, char** arg_values) {
     w.Index += 2;
     
     Bitcoin::transaction redeem = mine(
-        Bitcoin::ledger::prevout{
+        Bitcoin::prevout{
             Bitcoin::outpoint{spend.Transaction.id(), boost_output_index}, 
             bitcoin_output}, miner_key, spend_key.address());
     
     broadcast(redeem);
     
-    write_to_file(w.add(wallet::prevout{redeem.id(), 0, redeem.Outputs[0].Value, spend_key}), filename);
+    w = w.add(p2pkh_prevout{
+        redeem.id(), 0, 
+        redeem.Outputs[0].Value,
+        spend_key});
+    
+    write_to_file(w, filename);
     
     return 0;
 }
@@ -428,19 +467,19 @@ int help() {
         "\n\twif        -- private key that will be used to redeem this output."
         "\n\taddress    -- your address where you will put the redeemed sats."
         "\nFor function \"boost\", remaining inputs should be "
-        "\n\tfilename   -- wallet file name."
+        "\n\tfilename   -- wallet file name. "
         "\n\tvalue      -- value in satoshis to pay for boost."
         "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
         "\n\tdifficulty -- "
-        "\n\ttopic      -- string max 20 bytes."
-        "\n\tadd. data  -- string, any size."
-        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty.";
+        "\n\ttopic      -- OPTIONAL: string max 20 bytes."
+        "\n\tadd. data  -- OPTIONAL: string, any size."
+        "\n\ttype       -- OPTIONAL: may be either 'bounty' or 'contract'. Default is 'bounty'" << std::endl;
     
     return 0;
 }
 
 int main(int arg_count, char** arg_values) {
-	if(arg_count ==1) return help();
+	if(arg_count == 1) return help();
     //if (arg_count != 5) return help();
     
     string function{arg_values[1]};
@@ -451,7 +490,7 @@ int main(int arg_count, char** arg_values) {
         if (function == "boost") return command_boost(arg_count - 2, arg_values + 2);
         if (function == "help") return help();
         help();
-    } catch (string x) {
+    } catch (std::string x) {
         std::cout << "Error: " << x << std::endl;
         return 1;
     }

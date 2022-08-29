@@ -1,24 +1,29 @@
 #include <wallet.hpp>
 #include <gigamonkey/fees.hpp>
+#include <gigamonkey/incomplete.hpp>
+#include <gigamonkey/script/machine.hpp>
+#include <math.h>
+#include <data/io/wait_for_enter.hpp>
+#include <fstream>
 
 std::ostream &write_json(std::ostream &o, const p2pkh_prevout &p) {
-    return o << "{\"wif\": \"" << Key << "\", \"txid\": \"" << TXID << "\", \"index\": " << index << ", \"value\": " << int64(value) << "}";
+    return o << "{\"wif\": \"" << p.Key << "\", \"txid\": \"" << p.TXID.Value << "\", \"index\": " << p.Index << ", \"value\": " << int64(p.Value) << "}";
 }
 
-std::ostream &write_json(std::ostream &o, const wallet &p) {
+std::ostream &write_json(std::ostream &o, const wallet &w) {
     
     o << "{\"prevouts\": [";
     
-    list<p2pkh_prevout> p = Prevouts;
+    list<p2pkh_prevout> p = w.Prevouts;
     
     if (!data::empty(p)) while (true) {
         write_json(o, data::first(p));
-        
+        p = data::rest(p);
         if (data::empty(p)) break;
         o << ", ";
     }
     
-    return o << "], \"master\": \"" << Master << "\", \"index\": " << Index << "}";
+    return o << "], \"master\": \"" << w.Master << "\", \"index\": " << w.Index << "}";
     
 }
 
@@ -40,22 +45,22 @@ p2pkh_prevout read_prevout(const json &j) {
 wallet read_json(std::istream &i) {
     json j = json::parse(i);
     
-    if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) throw "invalid wallet format";
+    if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) throw std::string{"invalid wallet format"};
     
     auto pp = j["prevouts"];
-    list<prevout> prevouts;
+    list<p2pkh_prevout> prevouts;
     for (const json p: pp) prevouts <<= read_prevout(p);
     
-    return wallet{prevouts, Bitcoin::hd::bip32::secret{string(j["master"])}, data::uint32(j["index"])};
+    return wallet{prevouts, hd::bip32::secret{string(j["master"])}, data::uint32(j["index"])};
 }
 
 Bitcoin::satoshi wallet::value() const {
-    return data::fold([](Bitcoin::satoshi x, const prevout &p) -> Bitcoin::satoshi {
+    return data::fold([](Bitcoin::satoshi x, const p2pkh_prevout &p) -> Bitcoin::satoshi {
         return x + p.Value;
     }, Bitcoin::satoshi{0}, Prevouts);
 }
 
-wallet wallet::add(const p2pkh_prevout &p) {
+wallet wallet::add(const p2pkh_prevout &p) const {
     return wallet{
         Prevouts << p, 
         Master, 
@@ -63,62 +68,98 @@ wallet wallet::add(const p2pkh_prevout &p) {
     };
 }
 
+p2pkh_prevout::operator Bitcoin::prevout() const {
+    return Bitcoin::prevout{Bitcoin::outpoint{TXID, Index}, Bitcoin::output{Value, pay_to_address::script(Key.address().Digest)}};
+}
+
 uint64 redeem_script_size(bool compressed_pubkey) {
-    return compressed_pubkey ? 33 : 65;
+    return (compressed_pubkey ? 33 : 65) + 2 + Bitcoin::signature::MaxSignatureSize;
 }
 
 constexpr uint64 p2sh_script_size = 24;
 
 constexpr int64 dust = 500;
 
-wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) {
-    
-    list<p2pkh_prevout> prevouts = Prevouts;
-    
-    Gigamonkey::transaction_design {
-        
-    };
-    
-    uint64 expected_size = 
-        to.serialized_size() + // size of this output
-        // size of change output.
-        p2sh_script_size + Gigamonkey::Bitcoin::var_int::size(p2sh_script_size) + 8 + 
-        10; // version, locktime, and number of outputs and inputs.
-    
-    int64 amount_spent = 0;
-    int64 amount_sent = to.Value;
-    
-    // select prevouts 
-    list<prevout> prevouts{};
-    
-    do {
-        if (data::empty(w.Prevouts)) throw "insufficient funds";
-        
-        number_of_inputs = prevouts.size();
-        
-        amount_spent += w.Prevouts.first().Value;
-        
-        prevouts <<= w.Prevouts.first();
-        w.Prevouts = w.Prevouts.rest();
-        
-        expected_size += redeem_script_size - 
-            Gigamonkey::Bitcoin::var_int::size(number_of_inputs) + 
-            Gigamonkey::Bitcoin::var_int::size(number_of_inputs + 1);
-        
-    } while (amount_sent + satoshis_per_byte * expected_size < amount_spent + dust);
+wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) const {
+    wallet w = *this;
     
     // generate change script
-    auto xpriv = w.Master.derive(w.Index);
-    bytes change_script = Gigamonkey::pay_to_address::script(xpriv.address())};
-    w.Index++:
+    auto new_secret = Bitcoin::secret(w.Master.derive(w.Index));
+    w.Index++;
     
-    // calculate fee 
+    bytes change_script = Gigamonkey::pay_to_address::script(new_secret.address().Digest);
     
-    // make signatures 
+    // we create a transaction design without inputs and with an empty change output. 
+    // we will figure out what these parameters are. 
+    Gigamonkey::transaction_design tx{1, {}, {to, Bitcoin::output{0, change_script}}, 0};
     
-    // create tx. 
+    // the keys that we will use to sign the tx. 
+    list<Bitcoin::secret> signing_keys{};
     
-    // update wallet with new prevout
+    Bitcoin::satoshi fee;
     
-    return spent{w, tx};
+    // find sufficient funds 
+    while (true) {
+        // minimum fee required for this tx.
+        fee = std::ceil(tx.expected_size() * satoshis_per_byte);
+        
+        // we have enough funds to cover the amount sent with fee without leaving a dust input. 
+        if (tx.spent() - tx.sent() - fee > dust) break;
+        
+        if (data::empty(w.Prevouts)) throw std::string{"insufficient funds"};
+        
+        auto p = w.Prevouts.first();
+        w.Prevouts = w.Prevouts.rest();
+        
+        tx.Inputs <<= transaction_design::input(Bitcoin::prevout(p), redeem_script_size(p.Key.Compressed));
+        signing_keys <<= p.Key;
+        
+    }
+    
+    // randomize change index. 
+    uint32 change_index = std::uniform_int_distribution<data::uint32>(0, 1)(get_random_engine());
+    
+    Bitcoin::satoshi change_value = tx.spent() - tx.sent() - fee;
+    Bitcoin::output change{change_value, change_script};
+    
+    // replace outputs with a randomized list containing the correct change amount. 
+    tx.Outputs = change_index == 0 ? list<Bitcoin::output>{change, to} : list<Bitcoin::output>{to, change};
+    
+    Bitcoin::incomplete::transaction incomplete(tx);
+    
+    list<Bitcoin::sighash::document> documents = tx.documents();
+    
+    Bitcoin::transaction complete = incomplete.complete(
+        data::map_thread([](const Bitcoin::secret &k, const Bitcoin::sighash::document &doc) -> bytes {
+            return pay_to_address::redeem(k.sign(doc), k.to_public());
+        }, signing_keys, documents));
+    
+    uint32 index = 0;
+    list<Bitcoin::result> results = data::map_thread(
+        [&index, &incomplete](const transaction_design::input &inp, const Bitcoin::input &inb) -> Bitcoin::result {
+            return Bitcoin::evaluate(inb.Script, inp.Prevout.script(), Bitcoin::redemption_document{inp.Prevout.value(), incomplete, index++});
+        }, tx.Inputs, complete.Inputs);
+    
+    return spent{w.add(p2pkh_prevout{complete.id(), change_index, change_value, new_secret}), complete};
+}
+
+bool broadcast(const Bitcoin::transaction &t) {
+    std::cout << "please broadcast this transaction: " << bytes(t) << std::endl;
+    data::wait_for_enter();
+    return true;
+}
+
+void write_to_file(const wallet &w, const std::string &filename) {
+    std::fstream my_file;
+    my_file.open(filename, std::ios::out);
+    if (!my_file) throw std::string{"could not open file"};
+    write_json(my_file, w);
+    my_file.close();
+}
+
+wallet read_wallet_from_file(const std::string &filename) {
+    std::fstream my_file;
+    my_file.open(filename, std::ios::in);
+    if (!my_file) throw std::string{"could not open file"};    
+    return read_json(my_file);
 }

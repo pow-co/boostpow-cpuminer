@@ -15,11 +15,13 @@ struct p2pkh_prevout {
     
     Gigamonkey::Bitcoin::secret Key;
     
-    Bitcoin::satoshi value() const;
+    explicit operator Bitcoin::prevout() const;
     
 };
 
 struct wallet {
+    
+    static constexpr double default_fee_rate = 0.5;
     
     list<p2pkh_prevout> Prevouts;
     hd::bip32::secret Master;
@@ -29,8 +31,8 @@ struct wallet {
     
     struct spent;
     
-    spent spend(Bitcoin::output to, double satoshis_per_byte);
-    wallet add(const p2pkh_prevout &);
+    spent spend(Bitcoin::output to, double satoshis_per_byte = default_fee_rate) const;
+    wallet add(const p2pkh_prevout &) const;
     
     operator std::string() const;
     
@@ -38,14 +40,24 @@ struct wallet {
     
 };
 
+std::ostream &operator<<(std::ostream &, wallet &);
+
 struct wallet::spent {
     wallet Wallet;
     Bitcoin::transaction Transaction;
 };
 
-std::ostream &write_json(std::ostream &, wallet);
+bool broadcast(const Bitcoin::transaction &t);
+
+std::ostream &write_json(std::ostream &, const wallet&);
 wallet read_json(std::istream &);
 
-bool broadcast(const Bitcoin::transaction &t);
+std::ostream inline &operator<<(std::ostream &o, wallet &w) {
+    return write_json(o, w);
+}
+
+void write_to_file(const wallet &w, const std::string &filename);
+
+wallet read_wallet_from_file(const std::string &filename);
 
 #endif
