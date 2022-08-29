@@ -15,7 +15,7 @@ input should be "function" "args"... where function is
 For function "spend", remaining inputs should be 
 	content    -- hex for correct order, hexidecimal for reversed.
 	difficulty -- 
-	topic      -- string max 20 bytes.
+	topic      -- string max 20 bytes. (must be in hex)
 	add. data  -- string, any size.
 	address    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty.
 For function "redeem", remaining inputs should be 
@@ -92,9 +92,11 @@ The difficulty is a number that represents the amount of energy a computer must 
 
 The topic portion of the command gives users an easy way to categorize content that they are boosting. 
 
-- Topics are `strings` limited to 20 bytes. 
+- Topics are `strings` limited to 20 bytes in hex format. 
 - Think of them like a hashtag or category. 
 - Topics help narrow search results for people who are searching for content of a particular variety or subject matter.
+
+Example: `46616d696c79`
 
 ### 6. `additional data`
 
@@ -133,7 +135,7 @@ When a person or entity runs the `spend` command, BoostMiner generates a Boost o
 
 Example script: 
 ```
-626f6f7374706f77 OP_DROP 00000000 45723f7eba9fd97462e0a3284b74f835d1fbf57d324b4dae824a143715707d85 f8cf071e OP_FALSE 0e0a379d OP_FALSE OP_CAT OP_SWAP OP_5 OP_ROLL OP_DUP OP_TOALTSTACK OP_CAT OP_2 OP_PICK OP_TOALTSTACK OP_5 OP_ROLL OP_SIZE OP_4 OP_EQUALVERIFY OP_CAT OP_5 OP_ROLL OP_SIZE OP_8 OP_EQUALVERIFY OP_CAT OP_SWAP OP_CAT OP_HASH256 OP_SWAP OP_TOALTSTACK OP_CAT OP_CAT OP_SWAP OP_SIZE OP_4 OP_EQUALVERIFY OP_CAT OP_FROMALTSTACK OP_CAT OP_SWAP OP_SIZE OP_4 OP_EQUALVERIFY OP_CAT OP_HASH256 OP_FALSE OP_CAT OP_BIN2NUM OP_FROMALTSTACK OP_SIZE OP_4 OP_EQUALVERIFY OP_3 OP_SPLIT OP_DUP OP_BIN2NUM OP_3 OP_DATA_33 OP_WITHIN OP_VERIFY OP_TOALTSTACK OP_DUP OP_BIN2NUM OP_FALSE OP_GREATERTHAN OP_VERIFY 0000000000000000000000000000000000000000000000000000000000 OP_CAT OP_FROMALTSTACK OP_3 OP_SUB OP_8 OP_MUL OP_RSHIFT OP_FALSE OP_CAT OP_BIN2NUM OP_LESSTHAN OP_VERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG 
+08626f6f7374706f7775040000000020d0767187e33c54cf1289c916d43e8290138933adf023a5203bc88a2b3b6a69a904f8cf071e00043d4b5108007e7c557a766b7e52796b557a8254887e557a8258887e7c7eaa7c6b7e7e7c8254887e6c7e7c8254887eaa01007e816c825488537f7681530121a5696b768100a0691d00000000000000000000000000000000000000000000000000000000007e6c539458959901007e819f6976a96c88ac
 ```
 
 ### 2. `value`
