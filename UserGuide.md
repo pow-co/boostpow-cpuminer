@@ -16,7 +16,7 @@ For function "spend", remaining inputs should be
 	content    -- hex for correct order, hexidecimal for reversed.
 	difficulty -- 
 	topic      -- string max 20 bytes. (must be in hex)
-	add. data  -- string, any size.
+	add. data  -- string, any size. (must be in hex)
 	address    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty.
 For function "redeem", remaining inputs should be 
 	script     -- boost output script.
@@ -102,7 +102,8 @@ Example: `46616d696c79`
 
 The additional data portion of the `spend` command is where the person boosting the content can add any information about the file that they want.
 
-- A `string` of information any size.
+- A `string` of information any size
+- Must be in hex format
 - Examples include: 
   - credits for the creator
   - contact information of the booster

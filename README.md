@@ -22,8 +22,8 @@ input should be "function" "args"... where function is
 For function "spend", remaining inputs should be 
 	content    -- hex for correct order, hexidecimal for reversed.
 	difficulty -- 
-	topic      -- string max 20 bytes.
-	add. data  -- string, any size.
+	topic      -- string max 20 bytes. (must be in hex)
+	add. data  -- string, any size. (must be in hex)
 	address    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty.
 For function "redeem", remaining inputs should be 
 	script     -- boost output script.
