@@ -129,7 +129,7 @@ int main(int arg_count, char** arg_values) {
         help();
     } catch (std::string x) {
         std::cout << "Error: " << x << std::endl;
-        retI've almost got my wallet repaired. urn 1;
+        return 1;
     }
     
     return 0;
