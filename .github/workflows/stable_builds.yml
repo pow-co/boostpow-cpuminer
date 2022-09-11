@@ -46,7 +46,6 @@ jobs:
         run: |
           conan config set general.revisions_enabled=True
           conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/conan
-          conan user -p ${{ secrets.CONAN_USER_KEY }} -r proofofwork github
     outputs:
       releaseVersion: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
