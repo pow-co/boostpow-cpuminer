@@ -2,17 +2,17 @@ version: 2.1
 
 macos1230BuildDefaults: &macos1230BuildDefaults
   macos:
-      xcode: 12.3.0
+    xcode: 12.3.0
   environment:
-      HOMEBREW_NO_AUTO_UPDATE: 1
-      MACOS_BUILD: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    MACOS_BUILD: 1
 
 macos1170BuildDefaults: &macos1170BuildDefaults
   macos:
-      xcode: 11.7.0
+    xcode: 11.7.0
   environment:
-      HOMEBREW_NO_AUTO_UPDATE: 1
-      MACOS_BUILD: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    MACOS_BUILD: 1
 
 linuxBuildDefaults: &linuxBuildDefaults
   docker:
@@ -52,7 +52,8 @@ commands:
           name: Setup conan remote
           command: |
             [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
-            conan remote add proofofwork https://pow.jfrog.io/artifactory/api/conan/proofofwork
+            conan config set general.revisions_enabled=True
+            conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/conan
 
   setup_conan_remote_credentials:
     steps:
@@ -79,7 +80,7 @@ commands:
           name: Copy artifacts to the temp directory
           command: |
             mkdir -p /tmp/artifacts
-            cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/BoostMiner /tmp/artifacts
+            cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/bin/* /tmp/artifacts
             ls -l /tmp/artifacts
       - store_artifacts:
           path: /tmp/artifacts/BoostMiner
@@ -142,7 +143,7 @@ jobs:
       - setup_conan_remote_credentials
       - upload_conan_package
 
-          
+
 workflows:
   build-and-release:
     jobs:
