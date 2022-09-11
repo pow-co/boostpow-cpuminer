@@ -80,7 +80,6 @@ commands:
           name: Copy artifacts to the temp directory
           command: |
             mkdir -p /tmp/artifacts
-            ls ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/
             cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/bin/* /tmp/artifacts
             ls -l /tmp/artifacts
       - store_artifacts:
