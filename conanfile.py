@@ -1,6 +1,6 @@
 from conans import ConanFile, CMake
 
-
+# Boost Miner conan file
 class BoostMinerConan(ConanFile):
     name = "BoostMiner"
     version = "0.2.4"
