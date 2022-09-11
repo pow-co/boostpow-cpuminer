@@ -7,10 +7,16 @@ For distribution it is meant that this repository may be built for mac, linux, a
 ## Installation
 
 We use conan package manager to install the dependencies and build the applicatoin
+```bash
+conan config set general.revisions_enabled=True
 
-`conan install .` will install gigamonkey and its dependencies from artifactory
+conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/conan
+```
+Is needed to add the correct repository to conan.
 
-`conan build .` will output the BoostMiner program compiled for your platform
+`conan install . -r=proofofwork` will install gigamonkey and its dependencies from artifactory
+
+`conan build . -r=proofofwork` will output the BoostMiner program compiled for your platform
 
 ## Usage
 
