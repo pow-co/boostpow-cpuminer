@@ -60,7 +60,7 @@ jobs:
       - name: Cache Conan packages
         uses: actions/cache@v3
         env:
-          cache-name: cache-conan-test
+          cache-name: cache-conan
         with:
           key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/conanfile.py') }}
           path: |
