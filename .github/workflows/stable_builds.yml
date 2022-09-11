@@ -105,7 +105,7 @@ jobs:
           mkdir build
           cd build
           conan install .. -r=proofofwork
-          cmake ../src/ -DPACKAGE_TESTS=Off
+          cmake .. -DPACKAGE_TESTS=Off
           cmake --build .
           export CURRENT_VERSION="${{ needs.prep.outputs.releaseVersion }}"
           tar -czvf "BoostMiner-${CURRENT_VERSION}-linux.tar.gz" bin/*
