@@ -16,7 +16,7 @@ macos1170BuildDefaults: &macos1170BuildDefaults
 
 linuxBuildDefaults: &linuxBuildDefaults
   docker:
-    - image: conanio/gcc9:latest
+    - image: conanio/gcc10:latest
   resource_class: medium
 
 commands:
