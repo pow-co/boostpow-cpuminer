@@ -66,20 +66,11 @@ commands:
           name: Copy artifacts to the temp directory
           command: |
             mkdir -p /tmp/artifacts
-            cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/BoostMiner /tmp/artifacts
+            cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/bin/* /tmp/artifacts
             ls -l /tmp/artifacts
       - store_artifacts:
           path: /tmp/artifacts/BoostMiner
           destination: << parameters.destinationFileName >>
-
-  build_macos:
-    steps:
-      - install_macos_build_tools
-      - checkout
-      - setup_conan_remote
-      - build_recipe
-      - publish_artifacts:
-          destinationFileName: "boostminer_mac"
 
   build_linux:
     steps:
