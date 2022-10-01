@@ -38,7 +38,8 @@ commands:
           name: Setup conan remote
           command: |
             [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
-            conan remote add proofofwork https://pow.jfrog.io/artifactory/api/conan/proofofwork
+            conan config set general.revisions_enabled=True
+            conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/conan
 
   setup_conan_remote_credentials:
     steps:
