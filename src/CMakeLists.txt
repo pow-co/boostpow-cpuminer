@@ -12,6 +12,6 @@ target_link_libraries(BoostMiner PUBLIC CONAN_PKG::gigamonkey)
 target_include_directories(BoostMiner PUBLIC include)
 
 # Set C++ version
-target_compile_features(BoostMiner PUBLIC cxx_std_17)
+target_compile_features(BoostMiner PUBLIC cxx_std_20)
 set_target_properties(BoostMiner PROPERTIES CXX_EXTENSIONS OFF)
 
