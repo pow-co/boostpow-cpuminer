@@ -1,13 +1,14 @@
 #include <gigamonkey/boost/boost.hpp>
+#include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <ctime>
 #include "./logger.cpp"
 
 using namespace Gigamonkey;
 using nlohmann::json;
 
-Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_script, double fee_rate) {
+Bitcoin::satoshi calculate_fee(Bitcoin::prevout prevout, bytes pay_script, double fee_rate) {
 
-  Boost::output_script output_script{prevout.value().Script};
+  Boost::output_script output_script{prevout.script()};
 
   data::uint32 estimated_tx_size
     = 4                  // tx version
@@ -148,14 +149,13 @@ int spend(int arg_count, char** arg_values) {
     //std::cout << "target: " << target << std::endl;
     
     // Tag/topic does not need to be anything. 
-    ptr<bytes> topic = encoding::hex::read(string{arg_values[2]});
-    if (topic == nullptr || topic->size() > 20) throw (string{"could not read topic: "} + string{arg_values[2]});
+    string topic{arg_values[2]};
+    if (topic.size() > 20) throw string{"topic is too big: must be 20 or fewer bytes"};
     
     // additional data does not need to be anything but it 
     // can be used to provide information about a boost or
     // to add a comment. 
-    ptr<bytes> additional_data = encoding::hex::read(string{arg_values[3]});
-    if (additional_data == nullptr) throw (string{"could not read additional_data: "} + string{arg_values[3]});
+    string additional_data{arg_values[3]};
     
     // Category has no particular meaning. We could use it for
     // something like magic number if we wanted to imitate 21e8. 
@@ -174,57 +174,64 @@ int spend(int arg_count, char** arg_values) {
     bool use_general_purpose_bits = false;
     
     Boost::output_script output_script;
-
+    bytes output_script_bytes;
+    
     // If you use a bounty script, other people can 
     // compete with you to mine a boost output if you 
     // broadcast it before you broadcast the solution. 
 
     // If you use a contract script, then you are the only
     // one who can mine that boost output. 
+
     if (arg_count == 4) {
         output_script = Boost::output_script::bounty(
             category, 
             content, 
             target, 
-            *topic, 
+            bytes::from_string(topic), 
             user_nonce, 
-            *additional_data, 
+            bytes::from_string(additional_data), 
             use_general_purpose_bits);
-      logger::log("job.create", json {
-          {"target", target},
-          {"difficulty", diff},
-          {"content", content_hash_hex},
-          {"script", {
-            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
-            {"hex",output_script.write()}
-          }}
-      });
+        output_script_bytes = output_script.write();
+
+        logger::log("job.create", json {
+            {"target", target},
+            {"difficulty", diff},
+            {"content", content_hash_hex},
+            {"script", {
+                {"asm", Bitcoin::ASM(output_script_bytes)},
+                {"hex", output_script_bytes}
+            }}
+        });
     } else {
         Bitcoin::address miner_address{arg_values[4]};
-        if (!miner_address.valid()) throw (string{"could not read miner address: "} + string{arg_values[4]});
+        if (!miner_address.valid()) throw (std::string{"could not read miner address: "} + string{arg_values[4]});
         
         output_script = Boost::output_script::contract(
             category, 
             content, 
             target, 
-            *topic, 
+            bytes::from_string(topic), 
             user_nonce, 
-            *additional_data, 
+            bytes::from_string(additional_data), 
             miner_address.Digest, 
             use_general_purpose_bits);
+        output_script_bytes = output_script.write();
 
-      logger::log("job.create", json {
-          {"target", target},
-          {"difficulty", diff},
-          {"content", content_hash_hex},
-          {"miner", arg_values[4]},
-          {"script", {
-            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
-            {"hex",output_script.write()}
-          }}
-      });
+        logger::log("job.create", json {
+            {"target", target},
+            {"difficulty", diff},
+            {"content", content_hash_hex},
+            {"miner", arg_values[4]},
+            {"script", {
+                {"asm", Bitcoin::ASM(output_script_bytes)},
+                {"hex", output_script_bytes}
+            }}
+        });
     }
 
+    std::cout << "To spend to this job, paste into electrum-sv: \"" << 
+        typed_data::write(typed_data::mainnet, output_script_bytes) << "\"" << std::endl;
     
     return 0;
 }
@@ -247,7 +254,7 @@ json solution_to_json(work::solution x) {
 
 Bitcoin::transaction mine(
     // an unredeemed Boost PoW output 
-    Bitcoin::ledger::prevout prevout, 
+    Bitcoin::prevout prevout, 
     // The private key that you will use to redeem the boost output. This key 
     // corresponds to 'miner address' in the Boost PoW protocol. 
     Bitcoin::secret private_key, 
@@ -258,7 +265,7 @@ Bitcoin::transaction mine(
     using namespace Bitcoin;
     
     // Is this a boost output? 
-    Boost::output_script output_script{prevout.value().Script}; 
+    Boost::output_script output_script{prevout.script()}; 
     if (!output_script.valid()) throw "Not a valid Boost output script";
     
     // If this is a contract script, we need to check that the key we have been given corresponds 
@@ -298,8 +305,9 @@ Bitcoin::transaction mine(
     
     // signature
     signature signature = private_key.sign( 
-        signature::document{
-            prevout.value(),         // output being redeemed
+        sighash::document{
+            prevout.value(), 
+            prevout.script(),         // output being redeemed
             incomplete,              // the incomplete tx
             0});                     // index of input that will contain this signature
     
@@ -314,7 +322,7 @@ Bitcoin::transaction mine(
     
     logger::log("job.complete.redeemscript", json {
       {"solution", solution_to_json(proof.Solution)},
-      {"asm", interpreter::ASM(input_script.write())},
+      {"asm", Bitcoin::ASM(input_script.write())},
       {"hex", redeemhexstring },
       {"fee", fee}
     });
@@ -334,23 +342,28 @@ int redeem(int arg_count, char** arg_values) {
     string arg_wif{arg_values[4]};
     string arg_address{arg_values[5]};
     
-    ptr<bytes> script = encoding::hex::read(arg_script);
-    if (script == nullptr) throw "could not read script"; 
+    bytes *script;
+    ptr<bytes> script_from_hex = encoding::hex::read(string{arg_script});
+    typed_data script_from_bip_276 = typed_data::read(arg_script);
+    
+    if(script_from_bip_276.valid()) script = &script_from_bip_276.Data;
+    else if (script_from_hex != nullptr) script = &*script_from_hex;
+    else throw string{"could not read script"}; 
     
     int64 value;
     std::stringstream{arg_value} >> value;
     
     Bitcoin::txid txid{arg_txid};
-    if (!txid.valid()) throw "could not read txid";
+    if (!txid.valid()) throw string{"could not read txid"};
     
     uint32 index;
     std::stringstream{arg_index} >> index;
     
     Bitcoin::address address{arg_address};
-    if (!address.valid()) throw "could not read address";
+    if (!address.valid()) throw string{"could not read address"};
     
     Bitcoin::secret key{arg_wif};
-    if (!key.valid()) throw "could not read secret key";
+    if (!key.valid()) throw string{"could not read secret key"};
 
     logger::log("job.mine", json {
       {"script", arg_values[0]},
@@ -362,13 +375,12 @@ int redeem(int arg_count, char** arg_values) {
     });
     
     Bitcoin::transaction tx = mine(
-        Bitcoin::ledger::prevout{
+        Bitcoin::prevout{
             Bitcoin::outpoint{txid, index}, 
             Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
         key, address);
 
-
-    std::string txhex = data::encoding::hex::write(tx.write());
+    std::string txhex = data::encoding::hex::write(bytes(tx));
 
     //std::cout << "job.complete.transaction " << txhex << std::endl;
 
@@ -386,12 +398,12 @@ int help() {
         "\n\tredeem     -- mine and redeem an existing boost output."
         "\nFor function \"spend\", remaining inputs should be "
         "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
-        "\n\tdifficulty -- "
+        "\n\tdifficulty -- a positive number."
         "\n\ttopic      -- string max 20 bytes."
         "\n\tadd. data  -- string, any size."
         "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
         "\nFor function \"redeem\", remaining inputs should be "
-        "\n\tscript     -- boost output script."
+        "\n\tscript     -- boost output script, hex or bip 276."
         "\n\tvalue      -- value in satoshis of the output."
         "\n\ttxid       -- txid of the tx that contains this output."
         "\n\tindex      -- index of the output within that tx."

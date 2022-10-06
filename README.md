@@ -16,7 +16,7 @@ Is needed to add the correct repository to conan.
 
 `conan install . -r=proofofwork` will install gigamonkey and its dependencies from artifactory
 
-`conan build . -r=proofofwork` will output the BoostMiner program compiled for your platform
+`conan build .` will output the BoostMiner program compiled for your platform
 
 ## Usage
 
