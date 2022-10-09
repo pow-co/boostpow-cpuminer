@@ -74,7 +74,7 @@ int command_import(int arg_count, char** arg_values) {
     
     auto w = read_wallet_from_file(filename);
     
-    w = w.add(p2pkh_prevout{txid, index, Bitcoin::satoshi{value}, key});
+    w = w.insert(p2pkh_prevout{txid, index, Bitcoin::satoshi{value}, key});
     
     write_to_file(w, filename);
     return 0;
@@ -202,6 +202,28 @@ int command_boost(int arg_count, char** arg_values) {
         spend_key});*/
     
     write_to_file(w, filename);
+    return 0;
+}
+
+int command_restore(int arg_count, char** arg_values) {
+    if (arg_count > 3) throw std::string{"invalid number of arguments; two or three expected."};
+    
+    std::string filename{arg_values[0]};
+    std::string master_human{arg_values[1]};
+    
+    hd::bip32::secret master{master_human};
+    if (!master.valid()) throw string{"could not read HD private key"};
+    
+    uint32 max_look_ahead = 25;
+    if (arg_count == 3) {
+        std::string arg_max_look_ahead{arg_values[2]};
+        std::stringstream{arg_max_look_ahead} >> max_look_ahead;
+    }
+    
+    auto w = restore(master, max_look_ahead);
+    std::cout << "wallet is " << w << std::endl;
+    
+    write_to_file(w, filename);
     
     return 0;
 }
@@ -214,7 +236,8 @@ int help() {
         "\n\treceive    -- generate a new address."
         "\n\timport     -- add a utxo to this wallet."
         "\n\tsend       -- send to an address or script."
-        "\n\tboost      -- boost content ."
+        "\n\tboost      -- boost content."
+        "\n\tboost      -- restore a wallet."
         "\nFor function \"generate\", remaining inputs should be "
         "\n\tfilename   -- wallet file name. "
         "\nFor function \"value\", remaining inputs should be "
@@ -238,7 +261,10 @@ int help() {
         "\n\tdifficulty -- "
         "\n\ttopic      -- OPTIONAL: string max 20 bytes."
         "\n\tadd. data  -- OPTIONAL: string, any size."
-        "\n\ttype       -- OPTIONAL: may be either 'bounty' or 'contract'. Default is 'bounty'" << std::endl;
+        "\n\ttype       -- OPTIONAL: may be either 'bounty' or 'contract'. Default is 'bounty'"
+        "\nFor function \"restore\", remaining inputs should be "
+        "\n\tfilename   -- wallet file name. "
+        "\n\tmaster     -- HD master key" << std::endl;
     
     return 0;
 }
@@ -251,14 +277,17 @@ int main(int arg_count, char** arg_values) {
     string function{arg_values[1]};
     
     try {
+        
         if (function == "generate") return command_generate(arg_count - 2, arg_values + 2);
         if (function == "import") return command_import(arg_count - 2, arg_values + 2);
         if (function == "value") return command_value(arg_count - 2, arg_values + 2);
         if (function == "receive") return command_receive(arg_count - 2, arg_values + 2);
         if (function == "send") return command_send(arg_count - 2, arg_values + 2);
         if (function == "boost") return command_boost(arg_count - 2, arg_values + 2);
+        if (function == "restore") return command_restore(arg_count - 2, arg_values + 2);
         if (function == "help") return help();
         help();
+        
     } catch (std::string x) {
         std::cout << "Error: " << x << std::endl;
         return 1;
