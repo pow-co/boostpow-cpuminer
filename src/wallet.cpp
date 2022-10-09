@@ -1,4 +1,5 @@
 #include <wallet.hpp>
+#include <whatsonchain_api.hpp>
 #include <gigamonkey/fees.hpp>
 #include <gigamonkey/incomplete.hpp>
 #include <gigamonkey/script/machine.hpp>
@@ -46,7 +47,8 @@ p2pkh_prevout read_prevout(const json &j) {
 wallet read_json(std::istream &i) {
     json j = json::parse(i);
     
-    if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) throw std::string{"invalid wallet format"};
+    if (j.size() != 3 || !j.contains("prevouts") || !j.contains("master") || !j.contains("index")) 
+        throw std::string{"invalid wallet format"};
     
     auto pp = j["prevouts"];
     list<p2pkh_prevout> prevouts;
@@ -61,7 +63,7 @@ Bitcoin::satoshi wallet::value() const {
     }, Bitcoin::satoshi{0}, Prevouts);
 }
 
-wallet wallet::add(const p2pkh_prevout &p) const {
+wallet wallet::insert(const p2pkh_prevout &p) const {
     return wallet{
         Prevouts << p, 
         Master, 
@@ -141,7 +143,7 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) const 
             return Bitcoin::evaluate(inb.Script, inp.Prevout.script(), Bitcoin::redemption_document{inp.Prevout.value(), incomplete, index++});
         }, tx.Inputs, complete.Inputs);
     
-    return spent{w.add(p2pkh_prevout{complete.id(), change_index, change_value, new_secret}), complete};
+    return spent{w.insert(p2pkh_prevout{complete.id(), change_index, change_value, new_secret}), complete};
 }
 
 bool broadcast(const bytes &tx) {
@@ -163,4 +165,48 @@ wallet read_wallet_from_file(const std::string &filename) {
     my_file.open(filename, std::ios::in);
     if (!my_file) throw std::string{"could not open file"};    
     return read_json(my_file);
+}
+
+wallet restore(const hd::bip32::secret &master, uint32 max_look_ahead) {
+    
+    wallet w{{}, master, 0};
+    
+    boost::asio::io_context IO;
+    networking::HTTP http{IO};
+    whatsonchain API{http};
+    
+    uint32 last_used = 0;
+    
+    try {
+        while (true) {
+            
+            Bitcoin::secret new_key = Bitcoin::secret(w.Master.derive(w.Index));
+            w.Index += 1;
+            
+            Bitcoin::address new_addr = new_key.address();
+            std::cout << "testing address " << new_addr << std::endl;
+            
+            auto txs = API.address().get_unspent(new_addr);
+            
+            if (txs.size() == 0) {
+                if (last_used == max_look_ahead) break;
+                
+                last_used++;
+                continue;
+            }
+            
+            last_used = 0;
+            
+            for (const auto &prevout : txs) {
+                std::cout << "  match found at " << prevout.Outpoint << " with value " << prevout.Value << std::endl;
+                w = w.insert(p2pkh_prevout{prevout.Outpoint.Digest, prevout.Outpoint.Index, prevout.Value, new_key});
+            }
+            
+        }
+    } catch (networking::HTTP::response response) {
+        std::cout << "invalid HTTP response caught " << response.Status << std::endl;
+    } 
+    
+    return w;
+    
 }

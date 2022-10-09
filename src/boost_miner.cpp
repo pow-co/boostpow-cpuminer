@@ -131,10 +131,11 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
 }
 
 int command_spend(int arg_count, char** arg_values) {
-    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
-    
+    if (arg_count < 4 || arg_count > 5) throw std::string{"invalid number of arguments; should be 4 or 5"};
+    auto output_script = read_output_script(arg_count, arg_values);
+
     std::cout << "To spend to this job, paste into electrum-sv: \"" << 
-        typed_data::write(typed_data::mainnet, read_output_script(arg_count, arg_values).write()) << "\"" << std::endl;
+        typed_data::write(typed_data::mainnet, output_script.write()) << "\"" << std::endl;
     
     return 0;
 }
