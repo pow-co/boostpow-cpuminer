@@ -32,7 +32,7 @@ struct wallet {
     struct spent;
     
     spent spend(Bitcoin::output to, double satoshis_per_byte = default_fee_rate) const;
-    wallet add(const p2pkh_prevout &) const;
+    wallet insert(const p2pkh_prevout &) const;
     
     operator std::string() const;
     
@@ -57,5 +57,7 @@ std::ostream inline &operator<<(std::ostream &o, wallet &w) {
 void write_to_file(const wallet &w, const std::string &filename);
 
 wallet read_wallet_from_file(const std::string &filename);
+
+wallet restore(const hd::bip32::secret &master, uint32 max_look_ahead);
 
 #endif
