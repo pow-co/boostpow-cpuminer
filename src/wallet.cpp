@@ -146,10 +146,21 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) const 
     return spent{w.insert(p2pkh_prevout{complete.id(), change_index, change_value, new_secret}), complete};
 }
 
-bool broadcast(const bytes &tx) {
-    std::cout << "please broadcast this transaction: " << tx << std::endl;
-    data::wait_for_enter();
-    return true;
+bool broadcast(const Bitcoin::transaction &t) {
+    
+    boost::asio::io_context IO{};
+    networking::HTTP http{IO};
+    whatsonchain API{http};
+    
+    uint32 last_used = 0;
+    
+    try {
+        return API.transaction().broadcast(bytes(t));
+    } catch (networking::HTTP::response response) {
+        std::cout << "invalid HTTP response caught " << response.Status << std::endl;
+    } 
+    
+    return false;
 }
 
 void write_to_file(const wallet &w, const std::string &filename) {
