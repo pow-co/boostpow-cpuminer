@@ -7,10 +7,11 @@
 using namespace Gigamonkey;
 
 struct pow_co : networking::HTTP_client {
-    pow_co(networking::HTTP &)
+    
+    pow_co(networking::HTTP &);
     
     list<Boost::prevout> jobs();
     
-}
+};
 
 #endif
