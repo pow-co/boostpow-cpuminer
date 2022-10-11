@@ -8,14 +8,6 @@ bool whatsonchain::transactions::broadcast(const bytes &tx) {
     
     return static_cast<unsigned int>(response.Status) == 200;
 }
-
-
-    struct utxo {
-        
-        Bitcoin::txid TxHash;
-        uint32 Index;
-        Bitcoin::satoshi Value;
-        uint32 Height;
         
 whatsonchain::utxo::utxo() : TxHash{}, Index{}, Value{}, Height{} {}
 
@@ -39,8 +31,7 @@ whatsonchain::utxo::utxo(const json &item) : utxo{} {
     digest256 tx_hash{string{"0x"} + string(tx_hash_hex)};
     if (!tx_hash.valid()) return;
     
-    Txid = tx_hash;
-    Index = uint32(tx_pos); 
+    Outpoint = Bitcoin::outpoint{tx_hash, uint32(tx_pos)};
     Value = Bitcoin::satoshi{int64(value)};
     Height = uint32(height);
     
