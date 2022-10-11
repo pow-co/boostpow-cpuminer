@@ -1,6 +1,10 @@
 #ifndef BOOSTMINER_RANDOM
 #define BOOSTMINER_RANDOM
 
+#include <gigamonkey/types.hpp>
+
+using namespace Gigamonkey;
+
 // Some stuff having to do with random number generators. We do not need 
 // strong cryptographic random numbers for boost. It is fine to use 
 // basic random number generators that you would use in a game or something. 
