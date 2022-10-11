@@ -13,8 +13,7 @@ struct whatsonchain : networking::HTTP_client {
     
     struct utxo {
         
-        Bitcoin::txid Txid;
-        uint32 Index;
+        Bitcoin::outpoint Outpoint;
         Bitcoin::satoshi Value;
         uint32 Height;
         
@@ -82,7 +81,7 @@ whatsonchain::scripts inline whatsonchain::script() {
 }
 
 bool inline whatsonchain::utxo::valid() const {
-    return Txid.valid() && Value != 0;
+    return Value != 0;
 }
 
 #endif
