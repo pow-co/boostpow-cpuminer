@@ -98,7 +98,7 @@ json solution_to_json(work::solution x) {
     };
 }
 
-Bitcoin::transaction mine(
+bytes mine(
     // an unredeemed Boost PoW output 
     Boost::puzzle puzzle, 
     // the address you want the bitcoins to go to once you have redeemed the boost output.
@@ -315,6 +315,9 @@ int command_redeem(int arg_count, char** arg_values) {
     
     Bitcoin::secret key{arg_wif};
     if (!key.valid()) throw string{"could not read secret key"};
+    
+    Boost::output_script boost_script{*script};
+    if (!boost_script.valid()) throw string{"script is not valid"};
 
     logger::log("job.mine", json {
       {"script", arg_values[0]},
@@ -325,19 +328,28 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    Bitcoin::transaction tx = mine(
-        Bitcoin::prevout{
-            Bitcoin::outpoint{txid, index}, 
-            Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
-        key, address);
+    bytes redeem_tx = mine(
+        Boost::puzzle{{
+            Boost::prevout{
+                Bitcoin::outpoint{txid, index}, 
+                Boost::output{Bitcoin::satoshi{value}, boost_script}}
+        }, key}, address);
     
-    std::string txhex = data::encoding::hex::write(bytes(tx));
+    std::string redeem_txhex = data::encoding::hex::write(redeem_tx);
     
-    //std::cout << "job.complete.transaction " << txhex << std::endl;
+    auto redeem_txid = Bitcoin::Hash256(redeem_tx);
+    std::stringstream txid_stream;
+    txid_stream << redeem_txid;
     
     logger::log("job.complete.transaction", json {
-      {"txhex", txhex}
+      {"txid", txid_stream.str()}, 
+      {"txhex", redeem_txhex}
     });
+    
+    networking::HTTP http;
+    whatsonchain whatsonchain_API{http};
+    
+    whatsonchain_API.transaction().broadcast(redeem_tx);
     
     return 0;
 }
@@ -348,8 +360,8 @@ int command_mine(int arg_count, char** arg_values) {
     ptr<key_generator> signing_keys;
     ptr<address_generator> receiving_addresses;
     
-    Bitcoin::wif key{string(arg_values[0])};
-    HD::bip32::secret hd_key{string(arg_values[0])};
+    Bitcoin::secret key{string(arg_values[0])};
+    hd::bip32::secret hd_key{string(arg_values[0])};
     
     if (key.valid()) signing_keys = 
         std::static_pointer_cast<key_generator>(std::make_shared<single_key_generator>(key));
@@ -365,7 +377,7 @@ int command_mine(int arg_count, char** arg_values) {
         else throw string{"could not read signing key"};
     } else {
         Bitcoin::address address{string(arg_values[1])};
-        HD::bip32::secret hd_pubkey{string(arg_values[1])};
+        hd::bip32::pubkey hd_pubkey{string(arg_values[1])};
         
         if (key.valid()) receiving_addresses = 
             std::static_pointer_cast<address_generator>(std::make_shared<single_address_generator>(address));
@@ -375,22 +387,46 @@ int command_mine(int arg_count, char** arg_values) {
     }
     
     networking::HTTP http;
-    pow_co_api pow_co_API{http};
-    whatsonchain_api whatsonchain_API{http};
+    pow_co pow_co_API{http};
+    whatsonchain whatsonchain_API{http};
     
-    list<Boost::prevout> jobs = API.jobs();
+    list<Boost::prevout> jobs = pow_co_API.jobs();
+    list<Boost::puzzle> puzzles;
     
     for (const auto &job : jobs) {
         auto script_hash = job.Value.ID;
+        std::cout << "Checking script " << script_hash << " in " << job.outpoint() << std::endl;
         
         auto script_utxos = whatsonchain_API.script().get_unspent(script_hash);
         
-        auto match_found = false
+        if (data::empty(script_utxos)) std::cout << "warning: no utxos found for script " << script_hash << std::endl;
         
-        for (auto const &utxo : script_utxos) if ()
+        // is the current job in the list from whatsonchain? 
+        bool match_found = false;
         
-        if (!match_found) std::cout << "warning: no utxos found with script in " 
+        for (auto const &utxo : script_utxos) if (utxo.Outpoint == job.outpoint()) {
+            match_found = true;
+            break;
+        }
+        
+        if (!match_found) {
+            std::cout << "warning: no utxos found with script " << job.outpoint();
+            continue;
+        }
+        
+        if (script_utxos.size() > 1) {
+            std::cout << "warning: more than one output found with script " << job.outpoint();
+            continue;
+        }
+        
+        puzzles = puzzles << Boost::puzzle{{job}, signing_keys->next()};
+        
     }
+    
+    for (const auto &puzzle : puzzles) 
+        whatsonchain_API.transaction().broadcast(mine(puzzle, receiving_addresses->next()));
+    
+    return 0;
 }
 
 int help() {
