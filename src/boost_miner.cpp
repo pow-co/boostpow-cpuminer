@@ -1,162 +1,16 @@
 #include <gigamonkey/boost/boost.hpp>
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/p2p/var_int.hpp>
+#include <gigamonkey/mapi/mapi.hpp>
 #include <ctime>
 #include <logger.hpp>
 #include <random.hpp>
 #include <keys.hpp>
 #include <pow_co_api.hpp>
-#include <whatsonchain_api.hpp>
+#include <miner.hpp>
 
 using namespace Gigamonkey;
 using nlohmann::json;
-
-const double maximum_mining_difficulty = 2.2;
-const double minimum_price_per_difficulty_sats = 1000000;
-
-Bitcoin::satoshi calculate_fee(
-    size_t inputs_size, 
-    size_t pay_script_size, 
-    double fee_rate) {
-
-    return inputs_size                              // inputs
-        + 4                                         // tx version
-        + 1                                         // var int value 1 (number of outputs)
-        + 8                                         // satoshi value size
-        + Bitcoin::var_int::size(pay_script_size)   // size of output script size
-        + pay_script_size                           // output script size
-        + 4;                                        // locktime
-
-}
-
-// A cpu miner function. 
-work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
-    using uint256 = Gigamonkey::uint256;
-    
-    //if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
-    
-    uint64_big extra_nonce_2; 
-    std::copy(initial.Share.ExtraNonce2.begin(), initial.Share.ExtraNonce2.end(), extra_nonce_2.begin());
-    
-    uint256 target = p.Candidate.Target.expand();
-    if (target == 0) return {};
-    //std::cout << " working " << p << std::endl;
-    //std::cout << " with target " << target << std::endl;
-    
-    uint256 best{"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-    
-    N total_hashes{0};
-    N nonce_increment{"0x0100000000"};
-    uint32 display_increment = 0x00800000;
-    
-    work::proof pr{p, initial};
-    
-    while(true) {
-        uint256 hash = pr.string().hash();
-        total_hashes++;
-        
-        if (hash < best) {
-            best = hash;
-
-            logger::log("besthash", json {
-              {"hash", best},
-              {"total", uint64(total_hashes)}
-            });
-
-        } else if (pr.Solution.Share.Nonce % display_increment == 0) {
-            pr.Solution.Share.Timestamp = Bitcoin::timestamp::now();
-        }
-        
-        if (hash < target) {
-            return pr;
-        }
-        
-        pr.Solution.Share.Nonce++;
-        
-        if (pr.Solution.Share.Nonce == 0) {
-            extra_nonce_2++;
-            std::copy(extra_nonce_2.begin(), extra_nonce_2.end(), pr.Solution.Share.ExtraNonce2.begin());
-        }
-    }
-    
-    return pr;
-}
-
-json solution_to_json(work::solution x) {
-
-    json share {
-        {"timestamp", data::encoding::hex::write(x.Share.Timestamp.Value)},
-        {"nonce", data::encoding::hex::write(x.Share.Nonce)},
-        {"extra_nonce_2", data::encoding::hex::write(x.Share.ExtraNonce2) }
-    };
-    
-    if (x.Share.Bits) share["bits"] = data::encoding::hex::write(*x.Share.Bits);
-    
-    return json {
-        {"share", share}, 
-        {"extra_nonce_1", data::encoding::hex::write(x.ExtraNonce1)}
-    };
-}
-
-bytes mine(
-    // an unredeemed Boost PoW output 
-    Boost::puzzle puzzle, 
-    // the address you want the bitcoins to go to once you have redeemed the boost output.
-    // this is not the same as 'miner address'. This is just an address in your 
-    // normal wallet and should not be the address that goes along with the key above.
-    Bitcoin::address address) {
-    using namespace Bitcoin;
-    
-    if (!puzzle.valid()) throw string{"Boost puzzle is not valid"};
-    
-    Bitcoin::satoshi value = puzzle.value();
-    
-    // is the difficulty too high?
-    if (puzzle.difficulty() > maximum_mining_difficulty) 
-      std::cout << "warning: difficulty may be too high for CPU mining." << std::endl;
-    
-    // is the value in the output high enough? 
-    if (puzzle.profitability() < minimum_price_per_difficulty_sats)
-      std::cout << "warning: price per difficulty may be too low." << std::endl;
-    
-    auto generator = data::get_random_engine();
-    
-    Stratum::session_id extra_nonce_1{random_uint32(generator)};
-    uint64_big extra_nonce_2{random_uint64(generator)};
-    
-    work::solution initial{timestamp::now(), 0, bytes_view(extra_nonce_2), extra_nonce_1};
-    
-    if (puzzle.use_general_purpose_bits()) initial.Share.Bits = random_uint32(generator);
-    
-    work::proof proof = ::cpu_solve(work::puzzle(puzzle), initial);
-
-    bytes pay_script = pay_to_address::script(address.Digest);
-
-    double fee_rate = 0.5;
-
-    Bitcoin::satoshi fee = calculate_fee(puzzle.expected_size(), pay_script.size(), fee_rate);
-
-    if (fee > value) throw string{"Cannot pay tx fee with boost output"};
-    
-    bytes redeem_tx = puzzle.redeem(proof.Solution, {output{value - fee, pay_script}});
-    
-    bytes redeem_script = transaction{redeem_tx}.Inputs[0].Script;
-
-    std::string redeemhex = data::encoding::hex::write(redeem_script);
-
-    //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
-    
-    logger::log("job.complete.redeemscript", json {
-      {"solution", solution_to_json(proof.Solution)},
-      {"asm", Bitcoin::ASM(redeem_script)},
-      {"hex", redeemhex},
-      {"fee", fee}
-    });
-
-    // the transaction 
-    return redeem_tx;
-    
-}
 
 int command_spend(int arg_count, char** arg_values) {
     if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
@@ -346,7 +200,8 @@ int command_redeem(int arg_count, char** arg_values) {
       {"txhex", redeem_txhex}
     });
     
-    networking::HTTP http;
+    boost::asio::io_context io;
+    networking::HTTP http{io};
     whatsonchain whatsonchain_API{http};
     
     whatsonchain_API.transaction().broadcast(redeem_tx);
@@ -379,52 +234,122 @@ int command_mine(int arg_count, char** arg_values) {
         Bitcoin::address address{string(arg_values[1])};
         hd::bip32::pubkey hd_pubkey{string(arg_values[1])};
         
-        if (key.valid()) receiving_addresses = 
+        if (address.valid()) receiving_addresses = 
             std::static_pointer_cast<address_generator>(std::make_shared<single_address_generator>(address));
-        else if (hd_key.valid()) receiving_addresses = 
+        else if (hd_pubkey.valid()) receiving_addresses = 
             std::static_pointer_cast<address_generator>(std::make_shared<hd_address_generator>(hd_pubkey));
         else throw string{"could not read signing key"};
     }
     
-    networking::HTTP http;
+    boost::asio::io_context io;
+    
+    networking::HTTP http{io};
+    
     pow_co pow_co_API{http};
+    
     whatsonchain whatsonchain_API{http};
     
-    list<Boost::prevout> jobs = pow_co_API.jobs();
-    list<Boost::puzzle> puzzles;
+    BitcoinAssociation::MAPI gorilla{http, networking::REST{"https", "mapi.gorillapool.io"}};
     
-    for (const auto &job : jobs) {
-        auto script_hash = job.Value.ID;
-        std::cout << "Checking script " << script_hash << " in " << job.outpoint() << std::endl;
-        
-        auto script_utxos = whatsonchain_API.script().get_unspent(script_hash);
-        
-        if (data::empty(script_utxos)) std::cout << "warning: no utxos found for script " << script_hash << std::endl;
-        
-        // is the current job in the list from whatsonchain? 
-        bool match_found = false;
-        
-        for (auto const &utxo : script_utxos) if (utxo.Outpoint == job.outpoint()) {
-            match_found = true;
-            break;
+    try {
+        while(true) {
+            list<Boost::prevout> jobs = pow_co_API.jobs();
+            std::cout << "read " << jobs.size() << " jobs from pow.co/api/v1/jobs/" << std::endl;
+            
+            set<digest256> script_hashes;
+            map<digest256, boost_prevouts> prevouts;
+            uint32 jobs_with_duplicates = 0;
+            
+            for (const auto &job : jobs) {
+                digest256 script_hash = job.id();
+                
+                if (script_hashes.contains(script_hash)) {
+                    std::cout << " Script " << script_hash << " has already been detected." << std::endl;
+                    continue;
+                }
+                
+                script_hashes = script_hashes.insert(script_hash);
+                
+                std::cout << " Checking script with hash " << script_hash << " in \n\t" << 
+                    job.outpoint() << " on whatsonchain.com" << std::endl;
+                
+                auto script_utxos = whatsonchain_API.script().get_unspent(script_hash);
+                
+                // is the current job in the list from whatsonchain? 
+                bool match_found = false;
+                
+                std::cout << " whatsonchain.com found " << script_utxos.size() << " utxos for script " << script_hash << std::endl;
+                
+                if (script_utxos.size() > 1) jobs_with_duplicates++;
+                
+                for (auto const &utxo : script_utxos) {
+                    if (utxo.Outpoint == job.outpoint()) {
+                        match_found = true;
+                        break;
+                    }
+                }
+                
+                if (!match_found) {
+                    std::cout << " warning: " << job.outpoint() << " not found in whatsonchain utxos" << std::endl;
+                
+                    std::cout << " checking script redeption against pow.co/api/v1/spends/ ...";
+                    
+                    auto inpoint = pow_co_API.spends(job.outpoint());
+                    if (!inpoint.valid()) {
+                        std::cout << " No redemption found at pow.co." << std::endl;
+                        std::cout << " checking whatsonchain history." << std::endl;
+                        auto script_history = whatsonchain_API.script().get_history(script_hash);
+                        
+                        std::cout << " " << script_history.size() << " transactions returned; " << std::endl;
+                        
+                        for (const Bitcoin::txid &history_txid : script_history) {
+                            Bitcoin::transaction history_tx{whatsonchain_API.transaction().get_raw(history_txid)};
+                            if (!history_tx.valid()) std::cout << "  could not find tx " << history_txid << std::endl;
+                            
+                            for (const Bitcoin::input &in: history_tx.Inputs) if (in.Reference == job.outpoint()) {
+                                std::cout << "  Redemption found on whatsonchain.com at " << history_txid << std::endl;
+                                pow_co_API.submit_proof(history_txid);
+                                goto redemption_found;
+                            }
+                            
+                        } 
+                        
+                        std::cout << " no redemption found on whatsonchain.com " << std::endl;
+                        
+                    } else {
+                        std::cout << " Redemption found" << std::endl;
+                        pow_co_API.submit_proof(inpoint.Digest);
+                    }
+                }
+                
+                redemption_found:
+                
+                if (script_utxos.size() == 0) continue;
+                
+                prevouts = prevouts.insert(script_hash, boost_prevouts{job.script(), script_utxos});
+                
+                std::cout << " jobs found so far: " << prevouts.keys() << std::endl;
+                
+            }
+            
+            std::cout << "found " << jobs.size() << " jobs that are not redeemed already" << std::endl;
+            std::cout << "found " << jobs_with_duplicates << " boost scripts that appear in multiple outputs." << std::endl;
+            
+            std::cout << "About to start mining!" << std::endl;
+            
+            bytes redeem_tx = mine(prevouts_to_puzzle(select(prevouts), signing_keys->next()), receiving_addresses->next(), 900);
+            if (redeem_tx == bytes{}) {
+                std::cout << "proceeding to call the API again" << std::endl;
+                continue;
+            }
+            
+            whatsonchain_API.transaction().broadcast(redeem_tx);
+            gorilla.submit_transaction({redeem_tx});
+            
         }
-        
-        if (!match_found) {
-            std::cout << "warning: no utxos found with script " << job.outpoint();
-            continue;
-        }
-        
-        if (script_utxos.size() > 1) {
-            std::cout << "warning: more than one output found with script " << job.outpoint();
-            continue;
-        }
-        
-        puzzles = puzzles << Boost::puzzle{{job}, signing_keys->next()};
-        
+    } catch (const networking::HTTP::exception &exception) {
+        std::cout << "API problem: " << exception.what() << std::endl;
     }
-    
-    for (const auto &puzzle : puzzles) 
-        whatsonchain_API.transaction().broadcast(mine(puzzle, receiving_addresses->next()));
     
     return 0;
 }
