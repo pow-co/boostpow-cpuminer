@@ -8,8 +8,8 @@ using namespace Gigamonkey;
 
 struct whatsonchain : networking::HTTP_client {
     whatsonchain(networking::HTTP &http) : 
-        networking::HTTP_client{http, tools::rate_limiter{3, 1}, 
-            networking::REST{"https", "api.whatsonchain.com"}} {}
+        networking::HTTP_client{http, 
+            networking::REST{"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
     
     struct utxo {
         
@@ -20,6 +20,10 @@ struct whatsonchain : networking::HTTP_client {
         utxo();
         utxo(const json &);
         bool valid() const;
+        
+        bool operator==(const utxo &u) const {
+            return Outpoint == u.Outpoint && Value == u.Value && Height == u.Height;
+        }
         
     };
     
@@ -49,7 +53,7 @@ struct whatsonchain : networking::HTTP_client {
         
         bool broadcast(const bytes& tx);
         
-        ptr<bytes> get_raw(const Bitcoin::txid&);
+        bytes get_raw(const Bitcoin::txid&);
         
         whatsonchain &API;
     };
@@ -59,6 +63,7 @@ struct whatsonchain : networking::HTTP_client {
     struct scripts {
         
         list<utxo> get_unspent(const digest256& script_hash);
+        list<Bitcoin::txid> get_history(const digest256& script_hash);
         
         whatsonchain &API;
         
