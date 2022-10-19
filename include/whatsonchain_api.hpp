@@ -6,26 +6,28 @@
 
 using namespace Gigamonkey;
 
+struct utxo {
+    
+    Bitcoin::outpoint Outpoint;
+    Bitcoin::satoshi Value;
+    uint32 Height;
+    
+    utxo();
+    utxo(const json &);
+    bool valid() const;
+    
+    bool operator==(const utxo &u) const {
+        return Outpoint == u.Outpoint && Value == u.Value && Height == u.Height;
+    }
+    
+    explicit operator json() const;
+    
+};
+
 struct whatsonchain : networking::HTTP_client {
     whatsonchain(networking::HTTP &http) : 
         networking::HTTP_client{http, 
             networking::REST{"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
-    
-    struct utxo {
-        
-        Bitcoin::outpoint Outpoint;
-        Bitcoin::satoshi Value;
-        uint32 Height;
-        
-        utxo();
-        utxo(const json &);
-        bool valid() const;
-        
-        bool operator==(const utxo &u) const {
-            return Outpoint == u.Outpoint && Value == u.Value && Height == u.Height;
-        }
-        
-    };
     
     struct addresses {
         struct balance {
@@ -85,7 +87,7 @@ whatsonchain::scripts inline whatsonchain::script() {
     return scripts {*this};
 }
 
-bool inline whatsonchain::utxo::valid() const {
+bool inline utxo::valid() const {
     return Value != 0;
 }
 

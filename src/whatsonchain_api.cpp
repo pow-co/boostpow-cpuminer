@@ -2,35 +2,26 @@
 
 bool whatsonchain::transactions::broadcast(const bytes &tx) {
     
-    std::cout << "## broadcasting tx " << tx << std::endl;
-    
     auto request = API.Rest.POST("/v1/bsv/main/tx/raw", 
         {{networking::HTTP::header::content_type, "application/json"}}, 
         json{{"tx_hex", encoding::hex::write(tx)}}.dump());
     
     auto response = API(request);
     
-    std::cout << "## status code is " << static_cast<unsigned int>(response.Status) << ": " << response.Status << std::endl;
-    std::cout << "## headers are " << response.Headers << std::endl;
-    std::cout << "## response body is " << response.Body << std::endl;
-    
     if (static_cast<unsigned int>(response.Status) >= 500) 
         throw networking::HTTP::exception{request, response, string{"problem reading txid."}};
     
     if (static_cast<unsigned int>(response.Status) != 200 || 
-        response.Headers[networking::HTTP::header::content_type] == "text/plain") {
-        std::cout << "!!!! failed to broadcast tx. Status: " << response.Status << "; Body: " << response.Body << std::endl;
-        return false;
-    }
+        response.Headers[networking::HTTP::header::content_type] == "text/plain") return false;
     
     if (response.Body == "") return false;
     
     return true;
 }
         
-whatsonchain::utxo::utxo() : Outpoint{}, Value{}, Height{} {}
+utxo::utxo() : Outpoint{}, Value{}, Height{} {}
 
-whatsonchain::utxo::utxo(const json &item) : utxo{} {
+utxo::utxo(const json &item) : utxo{} {
     
     digest256 tx_hash{string{"0x"} + string(item.at("tx_hash"))};
     if (!tx_hash.valid()) return;
@@ -41,7 +32,17 @@ whatsonchain::utxo::utxo(const json &item) : utxo{} {
     
 }
 
-list<whatsonchain::utxo> whatsonchain::addresses::get_unspent(const Bitcoin::address &addr) {
+utxo::operator json() const {
+    std::stringstream ss;
+    ss << Outpoint.Digest;
+    return json {
+        {"tx_hash", ss.str().substr(9, 64)}, 
+        {"tx_pos", Outpoint.Index}, 
+        {"value", int64(Value)}, 
+        {"height", Height}};
+}
+
+list<utxo> whatsonchain::addresses::get_unspent(const Bitcoin::address &addr) {
     std::stringstream ss;
     ss << "/v1/bsv/main/address/" << addr << "/unspent";
     auto response = API.GET(ss.str());
@@ -67,7 +68,7 @@ list<whatsonchain::utxo> whatsonchain::addresses::get_unspent(const Bitcoin::add
     return utxos;
 }
 
-list<whatsonchain::utxo> whatsonchain::scripts::get_unspent(const digest256 &script_hash) {
+list<utxo> whatsonchain::scripts::get_unspent(const digest256 &script_hash) {
     std::stringstream ss;
     ss << script_hash;
     
@@ -140,11 +141,6 @@ list<Bitcoin::txid> whatsonchain::scripts::get_history(const digest256& script_h
 }
 
 bytes whatsonchain::transactions::get_raw(const Bitcoin::txid &txid) {
-    static map<Bitcoin::txid, bytes> cache;
-    
-    auto known = cache.contains(txid);
-    if (known) return *known;
-    
     std::stringstream ss;
     ss << txid;
     
@@ -161,6 +157,5 @@ bytes whatsonchain::transactions::get_raw(const Bitcoin::txid &txid) {
     ptr<bytes> tx = encoding::hex::read(response.Body);
     
     if (tx == nullptr) return {};
-    cache = cache.insert(txid, *tx);
     return *tx;
 }
