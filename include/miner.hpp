@@ -2,22 +2,23 @@
 #define BOOSTMINER_MINER
 
 #include <gigamonkey/boost/boost.hpp>
-#include <whatsonchain_api.hpp>
 #include <random.hpp>
+#include <keys.hpp>
+#include <whatsonchain_api.hpp>
 
-using namespace Gigamonkey;
+namespace BoostPOW {
 
-struct boost_prevouts {
+struct prevouts {
     Boost::output_script Script;
     
-    list<whatsonchain::utxo> UTXOs;
+    list<utxo> UTXOs;
     
     Bitcoin::satoshi Value;
     
-    boost_prevouts() = default;
-    boost_prevouts(const Boost::output_script &script, list<whatsonchain::utxo> utxos) : 
+    prevouts() = default;
+    prevouts(const Boost::output_script &script, list<utxo> utxos) : 
         Script{script}, UTXOs{utxos}, Value{
-            data::fold([](const Bitcoin::satoshi so_far, const whatsonchain::utxo &u) -> Bitcoin::satoshi {
+            data::fold([](const Bitcoin::satoshi so_far, const utxo &u) -> Bitcoin::satoshi {
                 return so_far + u.Value;
             }, Bitcoin::satoshi{0}, UTXOs)} {}
     
@@ -29,31 +30,57 @@ struct boost_prevouts {
         return double(Value) / difficulty();
     }
     
-    bool operator==(const boost_prevouts &pp) const {
+    bool operator==(const prevouts &pp) const {
         return Script == pp.Script && UTXOs == pp.UTXOs;
     }
     
-};
-
-Boost::puzzle prevouts_to_puzzle(const boost_prevouts &prevs, const Bitcoin::secret &key);
-
-struct miner {
-    BoostPOW::casual_random Random;
+    void add(const utxo &u) {
+        UTXOs = UTXOs << u;
+        Value += u.Value;
+    }
     
-    // select a puzzle optimally. 
-    boost_prevouts select(map<digest256, boost_prevouts> puzzles, double minimum_profitability = 0);
-
-    Bitcoin::transaction mine(
-        // an unredeemed Boost PoW output 
-        Boost::puzzle puzzle, 
-        // the address you want the bitcoins to go to once you have redeemed the boost output.
-        // this is not the same as 'miner address'. This is just an address in your 
-        // normal wallet and should not be the address that goes along with the key above.
-        Bitcoin::address address, 
-        // max time to mine before the function returns. Default is one full day. 
-        double max_time_seconds = 86400);
+    Boost::puzzle to_puzzle(const Bitcoin::secret &key) const;
+    
+    explicit operator json() const;
     
 };
+
+struct jobs : std::map<digest256, prevouts> {
+    
+    digest256 add_script(const Boost::output_script &z) {
+        auto script_hash = SHA2_256(z.write());
+        auto script_location = this->find(script_hash);
+        if (script_location == this->end()) (*this)[script_hash] = prevouts{z, {}};
+        return script_hash;
+    }
+    
+    void add_utxo(const digest256 &script_hash, const utxo &u) {
+        auto script_location = this->find(script_hash);
+        if (script_location != this->end()) script_location->second.add(u);
+    }
+    
+    explicit operator json() const;
+    
+};
+    
+// select a puzzle optimally. 
+prevouts select(random &, const jobs &, double minimum_profitability = 0);
+
+Bitcoin::transaction mine(
+    random &, 
+    // an unredeemed Boost PoW output 
+    const Boost::puzzle &puzzle, 
+    // the address you want the bitcoins to go to once you have redeemed the boost output.
+    // this is not the same as 'miner address'. This is just an address in your 
+    // normal wallet and should not be the address that goes along with the key above.
+    const Bitcoin::address &address, 
+    // max time to mine before the function returns. 
+    double max_time_seconds, 
+    double minimum_price_per_difficulty_sats, 
+    double maximum_mining_difficulty = -1);
+
+}
+
 /*
 struct miner_outer {work::puzzle &
     virtual void update_job(int, const work::puzzle &) = 0;

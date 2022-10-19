@@ -11,11 +11,24 @@ namespace BoostPOW {
     // Some stuff having to do with random number generators. We do not need 
     // strong cryptographic random numbers for boost. It is fine to use 
     // basic random number generators that you would use in a game or something. 
-
-    template <typename engine>
+    
+    
     struct random {
+        
+        virtual double range01() = 0;
 
-        static double inline range01(engine& gen) {    
+        virtual data::uint64 uint64() = 0;
+
+        virtual data::uint32 uint32() = 0;
+
+        virtual bool boolean() = 0;
+
+    };
+    
+    template <typename engine>
+    struct std_random : random {
+
+        static double range01(engine& gen) {    
             return std::uniform_real_distribution<double>{0.0, 1.0}(gen);
         }
 
@@ -38,32 +51,32 @@ namespace BoostPOW {
         
         engine Engine;
         
-        double inline range01() {    
+        double range01() override {    
             return range01(Engine);
         }
 
-        data::uint64 uint64() {
+        data::uint64 uint64() override {
             return uint64(Engine);
         }
 
-        data::uint32 uint32() {
+        data::uint32 uint32() override {
             return uint32(Engine);
         }
 
-        bool boolean() {
+        bool boolean() override {
             return boolean(Engine);
         }
         
-        random() : random{std::chrono::system_clock::now().time_since_epoch().count()} {}
-        random(data::uint64 seed);
+        std_random() : std_random{std::chrono::system_clock::now().time_since_epoch().count()} {}
+        std_random(data::uint64 seed);
 
     };
 
-    template <> inline random<std::default_random_engine>::random(data::uint64 seed) : Engine{} {
+    template <> inline std_random<std::default_random_engine>::std_random(data::uint64 seed) : Engine{} {
         Engine.seed(seed);
     }
 
-    using casual_random = random<std::default_random_engine>;
+    using casual_random = std_random<std::default_random_engine>;
 
 }
 

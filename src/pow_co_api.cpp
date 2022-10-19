@@ -1,7 +1,10 @@
 #include <pow_co_api.hpp>
 
-list<Boost::prevout> pow_co::jobs() {
-    auto request = this->Rest.GET("/api/v1/boost/jobs");
+list<Boost::prevout> pow_co::jobs(uint32 limit) {
+    std::stringstream ss;
+    ss << limit;
+    
+    auto request = this->Rest.GET("/api/v1/boost/jobs", {{"limit", ss.str()}});
     auto response = this->operator()(request);
     
     if (response.Status != networking::HTTP::status::ok) 
@@ -45,8 +48,7 @@ list<Boost::prevout> pow_co::jobs() {
     return boost_jobs;
 }
 
-
-pow_co::inpoint pow_co::spends(const Bitcoin::outpoint &outpoint) {
+inpoint pow_co::spends(const Bitcoin::outpoint &outpoint) {
     std::stringstream hash_stream;
     hash_stream << outpoint.Digest;
     
@@ -80,4 +82,24 @@ void pow_co::submit_proof(const Bitcoin::txid &txid) {
     
     auto request = this->Rest.POST(path_stream.str());
     this->operator()(request);
+}
+
+bool pow_co::broadcast(const bytes &tx) {
+    
+    auto request = this->Rest.POST("/api/v1/transactions/", 
+        {{networking::HTTP::header::content_type, "application/json"}}, 
+        json{{"transaction", encoding::hex::write(tx)}}.dump());
+    
+    auto response = (*this)(request);
+    
+    if (static_cast<unsigned int>(response.Status) >= 500) 
+        throw networking::HTTP::exception{request, response, string{"problem reading txid."}};
+    
+    if (static_cast<unsigned int>(response.Status) != 200) return false;
+    
+    try {
+        return json::parse(response.Body)["error"] == 0;
+    } catch (const json::exception &) {
+        return false;
+    }
 }

@@ -1,4 +1,4 @@
-
+#include <boost/program_options.hpp>
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/p2p/var_int.hpp>
 #include <network.hpp>
@@ -185,12 +185,19 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    Bitcoin::transaction redeem_tx = miner{}.mine(
+    BoostPOW::casual_random random;
+    
+    const double maximum_mining_difficulty = 2.2;
+    const double minimum_price_per_difficulty_sats = 100000;
+    
+    Bitcoin::transaction redeem_tx = BoostPOW::mine(
+        random, 
         Boost::puzzle{{
             Boost::prevout{
                 Bitcoin::outpoint{txid, index}, 
                 Boost::output{Bitcoin::satoshi{value}, boost_script}}
-        }, key}, address);
+        }, key}, address, 86400, // one day. 
+        minimum_price_per_difficulty_sats, maximum_mining_difficulty);
     
     bytes redeem_tx_raw = bytes(redeem_tx);
     std::string redeem_txhex = data::encoding::hex::write(redeem_tx_raw);
@@ -204,19 +211,54 @@ int command_redeem(int arg_count, char** arg_values) {
       {"txhex", redeem_txhex}
     });
     
-    network{}.broadcast(redeem_tx_raw);
+    BoostPOW::network{}.broadcast(redeem_tx_raw);
     
     return 0;
 }
 
 int command_mine(int arg_count, char** arg_values) {
-    if (arg_count > 2 || arg_count < 1) throw "invalid number of arguments; should be 1 or 2";
+    namespace po = boost::program_options;
+    
+    string key_string;
+    string address_string;
+    uint32 count_threads;
+    double min_profitability;
+    double max_difficulty;
+    
+    po::options_description options_mine("options for command \"mine\"");
+    
+    options_mine.add_options()
+    ("key", po::value<string>(&key_string), 
+        "WIF or HD private key that will be used to redeem outputs.")
+    ("address", po::value<string>(&address_string)->default_value(""), 
+        "Your address where you will put the redeemed sats. "
+        "If not provided, addresses will be generated from the key.")
+    ("threads", po::value<uint32>(&count_threads)->default_value(1), 
+        "Number of threads to mine with. Default is 1. (does not work yet)")
+    ("min_profitability", po::value<double>(&min_profitability)->default_value(0), 
+        "Boost jobs with less than this sats/difficulty will be ignored.")
+    ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
+        "Boost jobs above this difficulty will be ignored");
+    
+    po::positional_options_description arguments_mine;
+    arguments_mine.add("key", 1);
+    arguments_mine.add("address", 2);
+    
+    po::variables_map options_map;
+    try {
+        po::store(po::command_line_parser(arg_count, arg_values).
+          options(options_mine).positional(arguments_mine).run(), options_map);
+        po::notify(options_map);
+    } catch (const po::error &ex) {
+        std::cout << "Input format error: " << ex.what() << std::endl;
+        std::cout << options_mine << std::endl;
+    }
     
     ptr<key_generator> signing_keys;
     ptr<address_generator> receiving_addresses;
     
-    Bitcoin::secret key{string(arg_values[0])};
-    hd::bip32::secret hd_key{string(arg_values[0])};
+    Bitcoin::secret key{key_string};
+    hd::bip32::secret hd_key{key_string};
     
     if (key.valid()) signing_keys = 
         std::static_pointer_cast<key_generator>(std::make_shared<single_key_generator>(key));
@@ -224,15 +266,15 @@ int command_mine(int arg_count, char** arg_values) {
         std::static_pointer_cast<key_generator>(std::make_shared<hd_key_generator>(hd_key));
     else throw string{"could not read signing key"};
     
-    if (arg_count == 1) {
+    if (address_string == "") {
         if (key.valid()) receiving_addresses = 
             std::static_pointer_cast<address_generator>(std::make_shared<single_address_generator>(key.address()));
         else if (hd_key.valid()) receiving_addresses = 
             std::static_pointer_cast<address_generator>(std::make_shared<hd_address_generator>(hd_key.to_public()));
         else throw string{"could not read signing key"};
     } else {
-        Bitcoin::address address{string(arg_values[1])};
-        hd::bip32::pubkey hd_pubkey{string(arg_values[1])};
+        Bitcoin::address address{address_string};
+        hd::bip32::pubkey hd_pubkey{address_string};
         
         if (address.valid()) receiving_addresses = 
             std::static_pointer_cast<address_generator>(std::make_shared<single_address_generator>(address));
@@ -241,103 +283,36 @@ int command_mine(int arg_count, char** arg_values) {
         else throw string{"could not read signing key"};
     }
     
-    network net{};
-    miner Miner{};
+    BoostPOW::network net{};
+    BoostPOW::casual_random rand;
     
     try {
         while(true) {
-            list<Boost::prevout> jobs = net.PowCo.jobs();
-            std::cout << "read " << jobs.size() << " jobs from pow.co/api/v1/jobs/" << std::endl;
-            
-            set<digest256> script_hashes;
-            map<digest256, boost_prevouts> prevouts;
-            uint32 jobs_with_duplicates = 0;
-            
-            for (const auto &job : jobs) {
-                digest256 script_hash = job.id();
-                
-                if (script_hashes.contains(script_hash)) {
-                    std::cout << " Script " << script_hash << " has already been detected." << std::endl;
-                    continue;
-                }
-                
-                script_hashes = script_hashes.insert(script_hash);
-                
-                std::cout << " Checking script with hash " << script_hash << " in \n\t" << 
-                    job.outpoint() << " on whatsonchain.com" << std::endl;
-                
-                auto script_utxos = net.WhatsOnChain.script().get_unspent(script_hash);
-                
-                // is the current job in the list from whatsonchain? 
-                bool match_found = false;
-                
-                std::cout << " whatsonchain.com found " << script_utxos.size() << " utxos for script " << script_hash << std::endl;
-                
-                if (script_utxos.size() > 1) jobs_with_duplicates++;
-                
-                for (auto const &utxo : script_utxos) {
-                    if (utxo.Outpoint == job.outpoint()) {
-                        match_found = true;
-                        break;
-                    }
-                }
-                
-                if (!match_found) {
-                    std::cout << " warning: " << job.outpoint() << " not found in whatsonchain utxos" << std::endl;
-                
-                    std::cout << " checking script redeption against pow.co/api/v1/spends/ ...";
-                    
-                    auto inpoint = net.PowCo.spends(job.outpoint());
-                    if (!inpoint.valid()) {
-                        std::cout << " No redemption found at pow.co." << std::endl;
-                        std::cout << " checking whatsonchain history." << std::endl;
-                        auto script_history = net.WhatsOnChain.script().get_history(script_hash);
-                        
-                        std::cout << " " << script_history.size() << " transactions returned; " << std::endl;
-                        
-                        for (const Bitcoin::txid &history_txid : script_history) {
-                            Bitcoin::transaction history_tx{net.WhatsOnChain.transaction().get_raw(history_txid)};
-                            if (!history_tx.valid()) std::cout << "  could not find tx " << history_txid << std::endl;
-                            
-                            for (const Bitcoin::input &in: history_tx.Inputs) if (in.Reference == job.outpoint()) {
-                                std::cout << "  Redemption found on whatsonchain.com at " << history_txid << std::endl;
-                                net.PowCo.submit_proof(history_txid);
-                                goto redemption_found;
-                            }
-                            
-                        } 
-                        
-                        std::cout << " no redemption found on whatsonchain.com " << std::endl;
-                        
-                    } else {
-                        std::cout << " Redemption found" << std::endl;
-                        net.PowCo.submit_proof(inpoint.Digest);
-                    }
-                }
-                
-                redemption_found:
-                
-                if (script_utxos.size() == 0) continue;
-                
-                prevouts = prevouts.insert(script_hash, boost_prevouts{job.script(), script_utxos});
-                
-                std::cout << " jobs found so far: " << prevouts.keys() << std::endl;
-                
-            }
-            
-            std::cout << "found " << jobs.size() << " jobs that are not redeemed already" << std::endl;
-            std::cout << "found " << jobs_with_duplicates << " boost scripts that appear in multiple outputs." << std::endl;
+            BoostPOW::jobs Jobs{net.jobs(100)};
+            auto count_jobs = Jobs.size();
+            if (count_jobs == 0) return 0;
             
             std::cout << "About to start mining!" << std::endl;
             
-            Bitcoin::transaction redeem_tx = 
-                Miner.mine(prevouts_to_puzzle(Miner.select(prevouts), signing_keys->next()), receiving_addresses->next(), 900);
-            if (!redeem_tx.valid()) {
-                std::cout << "proceeding to call the API again" << std::endl;
-                continue;
+            // remove jobs that are two difficult. 
+            if (max_difficulty > 0) {
+                for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
+                    if (it->second.difficulty() > max_difficulty) 
+                        it = Jobs.erase(it);
+                    else ++it;
+                
+                std::cout << (count_jobs - Jobs.size()) << " jobs removed due to high difficulty." << std::endl;
             }
             
-            net.broadcast(bytes(redeem_tx));
+            Bitcoin::transaction redeem_tx = 
+                BoostPOW::mine(rand, 
+                    BoostPOW::select(rand, Jobs, min_profitability).to_puzzle(signing_keys->next()), 
+                    receiving_addresses->next(), 
+                    // 15 minutes.
+                    900, min_profitability, max_difficulty); 
+            
+            if (redeem_tx.valid()) net.broadcast(bytes(redeem_tx));
+            else std::cout << "proceeding to call the API again" << std::endl;
             
         }
     } catch (const networking::HTTP::exception &exception) {
@@ -349,43 +324,49 @@ int command_mine(int arg_count, char** arg_values) {
 
 int help() {
 
-    std::cout << "input should be \"function\" \"args\"... where function is "
-        "\n\tspend      -- create a Boost output."
-        "\n\tredeem     -- mine and redeem an existing boost output."
-        "\n\tmine       -- call the pow.co API to get jobs to mine."
+    std::cout << "input should be <function> <args>... --<option>=<value>... where function is "
+        "\n\t  spend      -- create a Boost output."
+        "\n\t  redeem     -- mine and redeem an existing boost output."
+        "\n\t  mine       -- call the pow.co API to get jobs to mine."
         "\nFor function \"spend\", remaining inputs should be "
-        "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
-        "\n\tdifficulty -- a positive number."
-        "\n\ttopic      -- string max 20 bytes."
-        "\n\tadd. data  -- string, any size."
-        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
+        "\n\t  content    -- hex for correct order, hexidecimal for reversed."
+        "\n\t  difficulty -- a positive number."
+        "\n\t  topic      -- string max 20 bytes."
+        "\n\t  add. data  -- string, any size."
+        "\n\t  address    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
         "\nFor function \"redeem\", remaining inputs should be "
-        "\n\tscript     -- boost output script, hex or bip 276."
-        "\n\tvalue      -- value in satoshis of the output."
-        "\n\ttxid       -- txid of the tx that contains this output."
-        "\n\tindex      -- index of the output within that tx."
-        "\n\twif        -- private key that will be used to redeem this output."
-        "\n\taddress    -- your address where you will put the redeemed sats." 
+        "\n\t  script     -- boost output script, hex or bip 276."
+        "\n\t  value      -- value in satoshis of the output."
+        "\n\t  txid       -- txid of the tx that contains this output."
+        "\n\t  index      -- index of the output within that tx."
+        "\n\t  wif        -- private key that will be used to redeem this output."
+        "\n\t  address    -- your address where you will put the redeemed sats." 
+        "\n\t  threads    -- (optional) number of threads to mine with. Default is 1." 
         "\nFor function \"mine\", remaining inputs should be "
-        "\n\tkey        -- WIF or HD private key that will be used to redeem outputs."
-        "\n\taddress    -- (optional) your address where you will put the redeemed sats."
-        "\n\t              If not provided, addresses will be generated from the key. " << std::endl;
+        "\n\t  key        -- WIF or HD private key that will be used to redeem outputs."
+        "\n\t  address    -- (optional) your address where you will put the redeemed sats."
+        "\n\t              If not provided, addresses will be generated from the key. " 
+        "\n\toptions for function \"mine\" are " 
+        "\n\t  threads           -- Number of threads to mine with. Default is 1. (does not work yet)"
+        "\n\t  min_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
+        "\n\t  max_difficulty    -- Boost jobs above this difficulty will be ignored." << std::endl;
     
     return 0;
 }
 
 int main(int arg_count, char** arg_values) {
     if(arg_count == 1) return help();
-    //if (arg_count != 5) return help();
     
     string function{arg_values[1]};
     
     try {
+        
         if (function == "spend") return command_spend(arg_count - 2, arg_values + 2);
         if (function == "redeem") return command_redeem(arg_count - 2, arg_values + 2);
-        if (function == "mine") return command_mine(arg_count - 2, arg_values + 2);
+        if (function == "mine") return command_mine(arg_count - 1, arg_values + 1);
         if (function == "help") return help();
         help();
+        
     } catch (std::string x) {
         std::cout << "Error: " << x << std::endl;
         return 1;
