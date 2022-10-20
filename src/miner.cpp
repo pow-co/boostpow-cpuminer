@@ -227,3 +227,13 @@ namespace BoostPOW {
     }
 
 }
+
+void mining_thread(miner_inner const *mine) {
+    auto puzzle = mine->latest_job();
+    
+    while (true) {
+        if (!puzzle.valid()) return;
+        
+        
+    }
+}

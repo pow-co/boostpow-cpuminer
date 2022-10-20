@@ -82,24 +82,23 @@ Bitcoin::transaction mine(
 }
 
 /*
-struct miner_outer {work::puzzle &
-    virtual void update_job(int, const work::puzzle &) = 0;
+
+struct miner_outer {
+    virtual void update_job(const work::puzzle &) = 0;
 };
 
 struct miner_inner {
     // get latest job. If there is no job yet, block. 
     // pointer will be null if the thread is supposed to stop. 
-    virtual const data::entry<int, work::puzzle> *latest_job() = 0;
-    virtual void solved(int, const work::solution &) = 0;
+    virtual const work::puzzle latest_job() = 0;
+    
+    virtual void solved(const work::solution &) = 0;
+    
+    casual_random_threadsafe Random;
+    
 };
 
 void mining_thread(miner_inner const *);
-
-struct miner : miner_outer, miner_inner {
-    std::shared_mutex Mutex;
-    std::list<data::entry<int, work::puzzle>> Puzzles;
-    int Max;
-};*/
-
+*/
 #endif
 

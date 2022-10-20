@@ -12,7 +12,6 @@ namespace BoostPOW {
     // strong cryptographic random numbers for boost. It is fine to use 
     // basic random number generators that you would use in a game or something. 
     
-    
     struct random {
         
         virtual double range01() = 0;
@@ -22,12 +21,12 @@ namespace BoostPOW {
         virtual data::uint32 uint32() = 0;
 
         virtual bool boolean() = 0;
-
+        
     };
     
     template <typename engine>
     struct std_random : random {
-
+    
         static double range01(engine& gen) {    
             return std::uniform_real_distribution<double>{0.0, 1.0}(gen);
         }
@@ -77,7 +76,39 @@ namespace BoostPOW {
     }
 
     using casual_random = std_random<std::default_random_engine>;
+    
+    template <typename engine>
+    class random_threadsafe : random {
+        random<engine> Random;
+        std::mutex Mutex;
+        
+        double range01() override {
+            std::lock_guard<std::mutex> Lock(Mutex);
+            return Random.range01();
+        }
 
+        data::uint64 uint64() override {
+            std::lock_guard<std::mutex> Lock(Mutex);
+            return uint64();
+        }
+
+        data::uint32 uint32() override {
+            std::lock_guard<std::mutex> Lock(Mutex);
+            return uint32();
+        }
+
+        bool boolean() override {
+            std::lock_guard<std::mutex> Lock(Mutex);
+            return boolean();
+        }
+        
+        random_threadsafe() : random{} {}
+        random_threadsafe(data::uint64 seed) : random{seed} {}
+
+    };
+    
+    using casual_random_threadsafe = random_threadsafe<std::default_random_engine>;
+    
 }
 
 #endif
