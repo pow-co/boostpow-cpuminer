@@ -141,54 +141,92 @@ int command_spend(int arg_count, char** arg_values) {
 }
 
 int command_redeem(int arg_count, char** arg_values) {
-    if (arg_count != 6) throw std::string{"invalid number of arguments; should be 6"};
+    namespace po = boost::program_options;
     
-    string arg_script{arg_values[0]};
-    string arg_value{arg_values[1]};
-    string arg_txid{arg_values[2]};
-    string arg_index{arg_values[3]};
-    string arg_wif{arg_values[4]};
-    string arg_address{arg_values[5]};
+    string script_string;
+    int64  value;
+    string txid_string;
+    uint32 index;
+    string wif_string;
+    string address_string;
+    uint32 count_threads;
+    double min_profitability;
+    double max_difficulty;
+    
+    po::options_description options_redeem("options for command \"redeem\"");
+    
+    options_redeem.add_options()
+    ("script", po::value<string>(&script_string), 
+        "boost output script, hex or bip 276.")
+    ("value", po::value<int64>(&value), 
+        "value in satoshis of the output.")
+    ("txid", po::value<string>(&txid_string), 
+        "txid of the tx that contains this output.")
+    ("index", po::value<uint32>(&index), 
+        "index of the output within that tx.")
+    ("wif", po::value<string>(&wif_string), 
+        "private key that will be used to redeem this output.")
+    ("address", po::value<string>(&address_string)->default_value(""), 
+        "Your address where you will put the redeemed sats. "
+        "If not provided, addresses will be generated from the key.")
+    ("threads", po::value<uint32>(&count_threads)->default_value(1), 
+        "Number of threads to mine with. Default is 1. (does not work yet)")
+    ("min_profitability", po::value<double>(&min_profitability)->default_value(0), 
+        "Boost jobs with less than this sats/difficulty will be ignored.")
+    ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
+        "Boost jobs above this difficulty will be ignored");
+    
+    po::positional_options_description arguments_redeem;
+    arguments_redeem.add("script", 1);
+    arguments_redeem.add("value", 2);
+    arguments_redeem.add("txid", 3);
+    arguments_redeem.add("index", 4);
+    arguments_redeem.add("wif", 5);
+    arguments_redeem.add("address", 6);
+    
+    po::variables_map options_map;
+    try {
+        po::store(po::command_line_parser(arg_count, arg_values).
+          options(options_redeem).positional(arguments_redeem).run(), options_map);
+        po::notify(options_map);
+    } catch (const po::error &ex) {
+        std::cout << "Input format error: " << ex.what() << std::endl;
+        std::cout << options_redeem << std::endl;
+        return 1;
+    }
     
     bytes *script;
-    ptr<bytes> script_from_hex = encoding::hex::read(string{arg_script});
-    typed_data script_from_bip_276 = typed_data::read(arg_script);
+    ptr<bytes> script_from_hex = encoding::hex::read(script_string);
+    typed_data script_from_bip_276 = typed_data::read(script_string);
     
     if(script_from_bip_276.valid()) script = &script_from_bip_276.Data;
     else if (script_from_hex != nullptr) script = &*script_from_hex;
     else throw string{"could not read script"}; 
     
-    int64 value;
-    std::stringstream{arg_value} >> value;
-    
-    Bitcoin::txid txid{arg_txid};
+    Bitcoin::txid txid{txid_string};
     if (!txid.valid()) throw string{"could not read txid"};
     
-    uint32 index;
-    std::stringstream{arg_index} >> index;
-    
-    Bitcoin::address address{arg_address};
-    if (!address.valid()) throw string{"could not read address"};
-    
-    Bitcoin::secret key{arg_wif};
+    Bitcoin::secret key{wif_string};
     if (!key.valid()) throw string{"could not read secret key"};
+    
+    Bitcoin::address address;
+    if (address_string == "") address = key.address();
+    else address = Bitcoin::address{address_string};
+    if (!address.valid()) throw string{"could not read address"};
     
     Boost::output_script boost_script{*script};
     if (!boost_script.valid()) throw string{"script is not valid"};
 
     logger::log("job.mine", json {
-      {"script", arg_values[0]},
-      {"value", arg_values[1]},
-      {"txid", arg_values[2]},
-      {"vout", arg_values[3]},
+      {"script", script_string},
+      {"value", value},
+      {"txid", txid_string},
+      {"vout", index},
       {"miner", key.address().write()},
       {"recipient", address.write()}
     });
     
     BoostPOW::casual_random random;
-    
-    const double maximum_mining_difficulty = 2.2;
-    const double minimum_price_per_difficulty_sats = 100000;
     
     Bitcoin::transaction redeem_tx = BoostPOW::mine(
         random, 
@@ -197,7 +235,7 @@ int command_redeem(int arg_count, char** arg_values) {
                 Bitcoin::outpoint{txid, index}, 
                 Boost::output{Bitcoin::satoshi{value}, boost_script}}
         }, key}, address, 86400, // one day. 
-        minimum_price_per_difficulty_sats, maximum_mining_difficulty);
+        min_profitability, max_difficulty);
     
     bytes redeem_tx_raw = bytes(redeem_tx);
     std::string redeem_txhex = data::encoding::hex::write(redeem_tx_raw);
@@ -252,6 +290,7 @@ int command_mine(int arg_count, char** arg_values) {
     } catch (const po::error &ex) {
         std::cout << "Input format error: " << ex.what() << std::endl;
         std::cout << options_mine << std::endl;
+        return 1;
     }
     
     ptr<key_generator> signing_keys;
@@ -325,31 +364,31 @@ int command_mine(int arg_count, char** arg_values) {
 int help() {
 
     std::cout << "input should be <function> <args>... --<option>=<value>... where function is "
-        "\n\t  spend      -- create a Boost output."
-        "\n\t  redeem     -- mine and redeem an existing boost output."
-        "\n\t  mine       -- call the pow.co API to get jobs to mine."
+        "\n\tspend      -- create a Boost output."
+        "\n\tredeem     -- mine and redeem an existing boost output."
+        "\n\tmine       -- call the pow.co API to get jobs to mine."
         "\nFor function \"spend\", remaining inputs should be "
-        "\n\t  content    -- hex for correct order, hexidecimal for reversed."
-        "\n\t  difficulty -- a positive number."
-        "\n\t  topic      -- string max 20 bytes."
-        "\n\t  add. data  -- string, any size."
-        "\n\t  address    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
+        "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
+        "\n\tdifficulty -- a positive number."
+        "\n\ttopic      -- string max 20 bytes."
+        "\n\tadd. data  -- string, any size."
+        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
         "\nFor function \"redeem\", remaining inputs should be "
-        "\n\t  script     -- boost output script, hex or bip 276."
-        "\n\t  value      -- value in satoshis of the output."
-        "\n\t  txid       -- txid of the tx that contains this output."
-        "\n\t  index      -- index of the output within that tx."
-        "\n\t  wif        -- private key that will be used to redeem this output."
-        "\n\t  address    -- your address where you will put the redeemed sats." 
-        "\n\t  threads    -- (optional) number of threads to mine with. Default is 1." 
-        "\nFor function \"mine\", remaining inputs should be "
-        "\n\t  key        -- WIF or HD private key that will be used to redeem outputs."
-        "\n\t  address    -- (optional) your address where you will put the redeemed sats."
+        "\n\tscript     -- boost output script, hex or bip 276."
+        "\n\tvalue      -- value in satoshis of the output."
+        "\n\ttxid       -- txid of the tx that contains this output."
+        "\n\tindex      -- index of the output within that tx."
+        "\n\twif        -- private key that will be used to redeem this output."
+        "\n\taddress    -- (optional) your address where you will put the redeemed sats." 
         "\n\t              If not provided, addresses will be generated from the key. " 
-        "\n\toptions for function \"mine\" are " 
-        "\n\t  threads           -- Number of threads to mine with. Default is 1. (does not work yet)"
-        "\n\t  min_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
-        "\n\t  max_difficulty    -- Boost jobs above this difficulty will be ignored." << std::endl;
+        "\nFor function \"mine\", remaining inputs should be "
+        "\n\tkey        -- WIF or HD private key that will be used to redeem outputs."
+        "\n\taddress    -- (optional) your address where you will put the redeemed sats."
+        "\n\t              If not provided, addresses will be generated from the key. " 
+        "\noptions for functions \"redeem\" and \"mine\" are " 
+        "\n\tthreads           -- Number of threads to mine with. Default is 1. (does not work yet)"
+        "\n\tmin_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
+        "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored." << std::endl;
     
     return 0;
 }
@@ -367,8 +406,11 @@ int main(int arg_count, char** arg_values) {
         if (function == "help") return help();
         help();
         
-    } catch (std::string x) {
+    } catch (const std::string x) {
         std::cout << "Error: " << x << std::endl;
+        return 1;
+    } catch (const std::exception &x) {
+        std::cout << "Strange error: " << x.what() << std::endl;
         return 1;
     }
     
