@@ -149,9 +149,10 @@ int command_redeem(int arg_count, char** arg_values) {
     uint32 index;
     string wif_string;
     string address_string;
-    uint32 count_threads;
+    uint32 threads;
     double min_profitability;
     double max_difficulty;
+    double fee_rate;
     
     po::options_description options_redeem("options for command \"redeem\"");
     
@@ -169,11 +170,13 @@ int command_redeem(int arg_count, char** arg_values) {
     ("address", po::value<string>(&address_string)->default_value(""), 
         "Your address where you will put the redeemed sats. "
         "If not provided, addresses will be generated from the key.")
-    ("threads", po::value<uint32>(&count_threads)->default_value(1), 
+    ("threads", po::value<uint32>(&threads)->default_value(1), 
         "Number of threads to mine with. Default is 1. (does not work yet)")
     ("min_profitability", po::value<double>(&min_profitability)->default_value(0), 
         "Boost jobs with less than this sats/difficulty will be ignored.")
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
+        "Boost jobs above this difficulty will be ignored")
+    ("fee_rate", po::value<double>(&fee_rate)->default_value(.5), 
         "Boost jobs above this difficulty will be ignored");
     
     po::positional_options_description arguments_redeem;
@@ -194,6 +197,10 @@ int command_redeem(int arg_count, char** arg_values) {
         std::cout << options_redeem << std::endl;
         return 1;
     }
+    
+    if (threads == 0) throw string{"Need at least 1 thread."};
+    if (threads > 1) throw string{"Multiple threads not supported."};
+    if (fee_rate < 0) throw string{"Fee rate must be positive"};
     
     bytes *script;
     ptr<bytes> script_from_hex = encoding::hex::read(script_string);
@@ -235,7 +242,7 @@ int command_redeem(int arg_count, char** arg_values) {
                 Bitcoin::outpoint{txid, index}, 
                 Boost::output{Bitcoin::satoshi{value}, boost_script}}
         }, key}, address, 86400, // one day. 
-        min_profitability, max_difficulty);
+        min_profitability, max_difficulty, fee_rate);
     
     bytes redeem_tx_raw = bytes(redeem_tx);
     std::string redeem_txhex = data::encoding::hex::write(redeem_tx_raw);
@@ -259,9 +266,10 @@ int command_mine(int arg_count, char** arg_values) {
     
     string key_string;
     string address_string;
-    uint32 count_threads;
+    uint32 threads;
     double min_profitability;
     double max_difficulty;
+    double fee_rate;
     
     po::options_description options_mine("options for command \"mine\"");
     
@@ -271,11 +279,13 @@ int command_mine(int arg_count, char** arg_values) {
     ("address", po::value<string>(&address_string)->default_value(""), 
         "Your address where you will put the redeemed sats. "
         "If not provided, addresses will be generated from the key.")
-    ("threads", po::value<uint32>(&count_threads)->default_value(1), 
+    ("threads", po::value<uint32>(&threads)->default_value(1), 
         "Number of threads to mine with. Default is 1. (does not work yet)")
     ("min_profitability", po::value<double>(&min_profitability)->default_value(0), 
         "Boost jobs with less than this sats/difficulty will be ignored.")
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
+        "Boost jobs above this difficulty will be ignored")
+    ("fee_rate", po::value<double>(&fee_rate)->default_value(.5), 
         "Boost jobs above this difficulty will be ignored");
     
     po::positional_options_description arguments_mine;
@@ -292,6 +302,9 @@ int command_mine(int arg_count, char** arg_values) {
         std::cout << options_mine << std::endl;
         return 1;
     }
+    
+    if (threads == 0) throw string{"Need at least 1 thread."};
+    if (fee_rate < 0) throw string{"Fee rate must be positive"};
     
     ptr<key_generator> signing_keys;
     ptr<address_generator> receiving_addresses;
@@ -323,17 +336,18 @@ int command_mine(int arg_count, char** arg_values) {
     }
     
     BoostPOW::network net{};
-    BoostPOW::casual_random rand;
+    
+    BoostPOW::miner miner{signing_keys, receiving_addresses, threads, 
+        std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, min_profitability, fee_rate};
     
     try {
         while(true) {
+            std::cout << "calling API" << std::endl;
             BoostPOW::jobs Jobs{net.jobs(100)};
             auto count_jobs = Jobs.size();
             if (count_jobs == 0) return 0;
             
-            std::cout << "About to start mining!" << std::endl;
-            
-            // remove jobs that are two difficult. 
+            // remove jobs that are too difficult. 
             if (max_difficulty > 0) {
                 for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
                     if (it->second.difficulty() > max_difficulty) 
@@ -343,15 +357,36 @@ int command_mine(int arg_count, char** arg_values) {
                 std::cout << (count_jobs - Jobs.size()) << " jobs removed due to high difficulty." << std::endl;
             }
             
-            Bitcoin::transaction redeem_tx = 
-                BoostPOW::mine(rand, 
-                    BoostPOW::select(rand, Jobs, min_profitability).to_puzzle(signing_keys->next()), 
-                    receiving_addresses->next(), 
-                    // 15 minutes.
-                    900, min_profitability, max_difficulty); 
+            uint32 unprofitable_jobs = 0;
+            for (auto it = Jobs.cbegin(); it != Jobs.cend(); it++) 
+                if (it->second.profitability() < min_profitability) 
+                    unprofitable_jobs++;
             
-            if (redeem_tx.valid()) net.broadcast(bytes(redeem_tx));
-            else std::cout << "proceeding to call the API again" << std::endl;
+            uint32 viable_jobs = Jobs.size() - unprofitable_jobs;
+            
+            std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << 
+                viable_jobs << " jobs remaining " << std::endl;
+            
+            if (viable_jobs == 0) return 0;
+            
+            miner.update(Jobs);
+            
+            auto last_time = Bitcoin::timestamp::now();
+            uint32 wait_time = 900; // 15 min 
+            
+            while (true) {
+                Bitcoin::transaction redeem_tx = miner.wait(wait_time);
+                if (!redeem_tx.valid()) break;
+                
+                if (!net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+                
+                auto now = Bitcoin::timestamp::now();
+                uint32 elapsed = now - last_time;
+                if (elapsed >= wait_time) break; 
+                last_time = now;
+                wait_time -= elapsed;
+                
+            }
             
         }
     } catch (const networking::HTTP::exception &exception) {
@@ -388,7 +423,8 @@ int help() {
         "\noptions for functions \"redeem\" and \"mine\" are " 
         "\n\tthreads           -- Number of threads to mine with. Default is 1. (does not work yet)"
         "\n\tmin_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
-        "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored." << std::endl;
+        "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored."
+        "\n\tfee_rate          -- sats per byte of the final transaction." << std::endl;
     
     return 0;
 }
