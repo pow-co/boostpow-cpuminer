@@ -64,7 +64,6 @@ inpoint pow_co::spends(const Bitcoin::outpoint &outpoint) {
     list<Boost::prevout> boost_jobs;
     try {
         if (response.Body == "") return {};
-        std::cout << "Response is \"" << response.Body << "\"" << std::endl;
     } catch (const json::exception &j) {
         throw networking::HTTP::exception{request, response, string{"invalid json format: "} + string{j.what()}};
     }

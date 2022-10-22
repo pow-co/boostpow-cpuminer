@@ -3,6 +3,7 @@
 
 #include <gigamonkey/types.hpp>
 #include <chrono>
+#include <mutex>
 
 using namespace Gigamonkey;
 
@@ -21,6 +22,8 @@ namespace BoostPOW {
         virtual data::uint32 uint32() = 0;
 
         virtual bool boolean() = 0;
+        
+        virtual ~random() {}
         
     };
     
@@ -79,7 +82,7 @@ namespace BoostPOW {
     
     template <typename engine>
     class random_threadsafe : random {
-        random<engine> Random;
+        std_random<engine> Random;
         std::mutex Mutex;
         
         double range01() override {
@@ -89,17 +92,17 @@ namespace BoostPOW {
 
         data::uint64 uint64() override {
             std::lock_guard<std::mutex> Lock(Mutex);
-            return uint64();
+            return Random.uint64();
         }
 
         data::uint32 uint32() override {
             std::lock_guard<std::mutex> Lock(Mutex);
-            return uint32();
+            return Random.uint32();
         }
 
         bool boolean() override {
             std::lock_guard<std::mutex> Lock(Mutex);
-            return boolean();
+            return Random.boolean();
         }
         
         random_threadsafe() : random{} {}
