@@ -1,4 +1,5 @@
 #include <gigamonkey/script/typed_data_bip_276.hpp>
+#include <gigamonkey/redeem.hpp>
 #include <sv/uint256.h>
 #include <miner.hpp>
 #include <logger.hpp>
@@ -55,18 +56,18 @@ namespace BoostPOW {
         return pr;
     }
     
-    std::pair<digest256, prevouts> select(random &r, const jobs &j, double minimum_profitability) {
+    std::pair<digest256, Boost::candidate> select(random &r, const jobs &j, double minimum_profitability) {
         
         if (j.size() == 0) return {};
         
         double total_profitability = 0;
-        for (const std::pair<digest256, prevouts> &p : j) if (p.second.profitability() > minimum_profitability) 
+        for (const std::pair<digest256, Boost::candidate> &p : j) if (p.second.profitability() > minimum_profitability) 
             total_profitability += (p.second.profitability() - minimum_profitability);
         
         double random = r.range01() * total_profitability;
         
         double accumulated_profitability = 0;
-        for (const std::pair<digest256, prevouts> &p : j) if (p.second.profitability() > minimum_profitability) {
+        for (const std::pair<digest256, Boost::candidate> &p : j) if (p.second.profitability() > minimum_profitability) {
             accumulated_profitability += (p.second.profitability() - minimum_profitability);
             
             if (accumulated_profitability >= random) return p;
@@ -80,7 +81,7 @@ namespace BoostPOW {
         size_t inputs_size, 
         size_t pay_script_size, 
         double fee_rate) {
-
+        
         return inputs_size                              // inputs
             + 4                                         // tx version
             + 1                                         // var int value 1 (number of outputs)
@@ -123,7 +124,9 @@ namespace BoostPOW {
     string write(const Bitcoin::txid &txid) {
         std::stringstream txid_stream;
         txid_stream << txid;
-        return txid_stream.str().substr(7, 66);
+        string txid_string = txid_stream.str();
+        if (txid_string.size() < 73) throw string {"warning: txid string was "} + txid_string;
+        return txid_string.substr(7, 66);
     }
     
     string write(const Bitcoin::outpoint &o) {
@@ -177,7 +180,7 @@ namespace BoostPOW {
         std::cout << "mining on script " << puzzle.id() << std::endl;
         if (!puzzle.valid()) throw string{"Boost puzzle is not valid"};
         
-        Bitcoin::satoshi value = puzzle.value();
+        Bitcoin::satoshi value = puzzle.Value;
         
         std::cout << "difficulty is " << puzzle.difficulty() << "." << std::endl;
         std::cout << "price per difficulty is " << puzzle.profitability() << "." << std::endl;
@@ -203,51 +206,69 @@ namespace BoostPOW {
         
     }
     
-    Boost::puzzle prevouts::to_puzzle(const Bitcoin::secret &key) const {
-        Boost::output_script script = Script;
-        
-        return Boost::puzzle{data::for_each([&script](const utxo &u) -> Boost::prevout {
-            return {u.Outpoint, Boost::output{u.Value, script}};
-        }, UTXOs), key};
+    json to_json(const Boost::candidate::prevout &p) {
+        return json {
+            {"output", write(static_cast<Bitcoin::outpoint>(p))}, 
+            {"value", int64(p.Value)}};
     }
     
-    prevouts::operator json() const {
-        std::stringstream value_stream;
-        value_stream << int64(Value);
+    json to_json(const Boost::candidate &c) {
         
         json::array_t arr;
-        for (const auto &u : UTXOs) arr.push_back(json(u));
+        auto prevouts = c.Prevouts;
+        while (!data::empty(prevouts)) {
+            arr.push_back(to_json(prevouts.first()));
+            prevouts = prevouts.rest();
+        }
         
         return json {
-            {"script", typed_data::write(typed_data::mainnet, Script.write())}, 
-            {"UTXOs", arr}, 
-            {"value", value_stream.str()}};
+            {"script", typed_data::write(typed_data::mainnet, c.Script.write())}, 
+            {"prevouts", arr}, 
+            {"value", int64(c.Value)}};
+    }
+    
+    digest256 jobs::add_script(const Boost::output_script &z) {
+        auto script_hash = SHA2_256(z.write());
+        auto script_location = this->find(script_hash);
+        if (script_location == this->end()) (*this)[script_hash] = Boost::candidate{z, {}};
+        return script_hash;
+    }
+    
+    void jobs::add_prevout(const digest256 &script_hash, const Boost::prevout &u) {
+        auto script_location = this->find(script_hash);
+        if (script_location != this->end()) {
+            script_location->second = script_location->second.add(u);
+        }
     }
     
     jobs::operator json() const {
         json::object_t puz;
         
-        for (const auto &j : *this) {
-            std::stringstream ss;
-            ss << j.first;
-            puz[ss.str()] = json(j.second);
-        }
+        for (const auto &j : *this) puz[write(j.first)] = to_json(j.second);
         
         return puz;
     }
     
     void mining_thread(channel_inner *ch, random *r, uint32 thread_number) {
-        auto puzzle = ch->latest();
-        std::cout << "begin thread " << thread_number << std::endl;
+        logger::log("begin thread", json(thread_number));
+        std::pair<digest256, work::puzzle> puzzle{};
         while (true) {
-            if (!puzzle.valid()) break;
-            work::proof proof = solve(*r, puzzle, 10);
+            digest256 old_job = puzzle.first;
+            puzzle = ch->latest();
+            if (!puzzle.first.valid()) break;
+            
+            if (old_job != puzzle.first) logger::log("begin job", 
+                json({{"number", thread_number}, {"job", write(puzzle.first)}}));
+            
+            work::proof proof = solve(*r, puzzle.second, 10);
             if (proof.valid()) {
                 std::cout << "solution found in thread " << thread_number << std::endl;
                 ch->solved(proof.Solution);
             }
+            
             puzzle = ch->latest();
         }
+        
         std::cout << "end thread " << thread_number << std::endl;
         delete r;
     }
@@ -268,19 +289,15 @@ namespace BoostPOW {
     void miner::select_and_update_job() {
         Selected = select(Random, Jobs, MinProfitability);
         
-        json::array_t utxos;
-        for (const utxo &u : Selected.second.UTXOs) 
-            utxos.push_back(json{{"outpoint", write(u.Outpoint)}, {"value", int64(u.Value)}});
-        
         logger::log("job.selected", json {
             {"script_hash", write(Selected.first)},
             {"difficulty", Selected.second.difficulty()},
             {"profitability", Selected.second.profitability()},
-            {"outputs", utxos}
+            {"job", to_json(Selected.second)}
         });
         
-        Current = Selected.second.to_puzzle(Keys->next());
-        Channel.update(work::puzzle(Current));
+        Current = Boost::puzzle{Selected.second, Keys->next()};
+        Channel.update({Selected.first, work::puzzle(Current)});
     }
     
     miner::~miner() {
@@ -308,17 +325,13 @@ namespace BoostPOW {
         if (!tx_valid) return {};
         
         auto value = Selected.second.Value;
-        
         bytes pay_script = pay_to_address::script(Addresses->next().Digest);
-        
         Bitcoin::satoshi fee = calculate_fee(Current.expected_size(), pay_script.size(), FeeRate);
         
         if (fee > value) throw string{"Cannot pay tx fee with boost output"};
         
         auto redeem_tx = redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
-        
         Jobs.erase(Jobs.find(Selected.first));
-        
         select_and_update_job();
         
         return redeem_tx;

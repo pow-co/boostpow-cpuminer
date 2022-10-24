@@ -1,6 +1,7 @@
 #include <wallet.hpp>
 #include <whatsonchain_api.hpp>
 #include <gigamonkey/fees.hpp>
+#include <gigamonkey/redeem.hpp>
 #include <gigamonkey/incomplete.hpp>
 #include <gigamonkey/script/machine.hpp>
 #include <math.h>
@@ -140,7 +141,8 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) const 
     uint32 index = 0;
     list<Bitcoin::result> results = data::map_thread(
         [&index, &incomplete](const transaction_design::input &inp, const Bitcoin::input &inb) -> Bitcoin::result {
-            return Bitcoin::evaluate(inb.Script, inp.Prevout.script(), Bitcoin::redemption_document{inp.Prevout.value(), incomplete, index++});
+            return Bitcoin::evaluate(inb.Script, inp.Prevout.script(), 
+                Bitcoin::redemption_document{inp.Prevout.value(), incomplete, index++});
         }, tx.Inputs, complete.Inputs);
     
     return spent{w.insert(p2pkh_prevout{complete.id(), change_index, change_value, new_secret}), complete};
