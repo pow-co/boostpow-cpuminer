@@ -39,14 +39,9 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
     auto count_closed_job = [this, &count_closed_jobs, &script_histories, &redemptions](const Boost::prevout &job) -> void {
         count_closed_jobs++;
         
-        //std::cout << " checking script redemption against pow.co/api/v1/spends/ ...";
-        
         auto inpoint = PowCo.spends(job.outpoint());
         
         if (!inpoint.valid()) {
-            //std::cout << " No redemption found at pow.co." << std::endl;
-            //std::cout << " checking whatsonchain history." << std::endl;
-            
             auto script_hash = job.id();
             
             auto history = script_histories.find(script_hash);
@@ -56,18 +51,12 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
                 history = script_histories.find(script_hash);
             }
             
-            //std::cout << " " << history->second.size() << " in history; " << std::endl;
-            
             for (const Bitcoin::txid &history_txid : history->second) {
                 Bitcoin::transaction history_tx{get_transaction(history_txid)};
-                if (!history_tx.valid()) {
-                    //std::cout << "  could not find tx " << history_txid << std::endl;
-                    continue;
-                }
+                if (!history_tx.valid()) continue;
                 
                 uint32 ii = 0;
                 for (const Bitcoin::input &in: history_tx.Inputs) if (in.Reference == job.outpoint()) {
-                    //std::cout << "  Redemption found on whatsonchain.com at " << history_txid << std::endl;
                     
                     redemptions.push_back(json{
                         {"outpoint", write(job.outpoint())}, 
@@ -80,25 +69,17 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
                 
             } 
             
-            //std::cout << " no redemption found on whatsonchain.com " << std::endl;
-            
-        } else {
-            //std::cout << " Redemption found on pow_co; submitting proof to pow_co" << std::endl;
-            PowCo.submit_proof(inpoint.Digest);
-        }
-        
+        } else PowCo.submit_proof(inpoint.Digest);
     };
     
     for (const Boost::prevout &job : jobs_api_call) {
+    
         digest256 script_hash = job.id();
         
-        //std::cout << " Checking script with hash " << script_hash << " in " << job.outpoint() << std::endl;
-        
         if (auto j = Jobs.find(script_hash); j != Jobs.end()) {
-            //std::cout << " hash has already been found." << std::endl;
             
             bool closed_job = true;
-            for (const auto &u : j->second.UTXOs) if (u.Outpoint == job.outpoint()) {
+            for (const auto &u : j->second.Prevouts) if (static_cast<Bitcoin::outpoint>(u) == job.outpoint()) {
                 closed_job = false;
                 break;
             }
@@ -110,29 +91,19 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
         
         Jobs.add_script(job.script());
         
-        //std::cout << " Checking on whatsonchain.com" << std::endl;
-        
         auto script_utxos = WhatsOnChain.script().get_unspent(script_hash);
         
         // is the current job in the list from whatsonchain? 
         bool match_found = false;
         
-        //std::cout << " whatsonchain.com found " << script_utxos.size() << " utxos for script " << script_hash << std::endl;
-        
         for (auto const &u : script_utxos) {
-            Jobs.add_utxo(script_hash, u);
+            Boost::prevout p{u.Outpoint, Boost::output{u.Value, job.script()}};
+            Jobs.add_prevout(script_hash, p);
             
-            if (u.Outpoint == job.outpoint()) {
-                match_found = true;
-                break;
-            }
+            if (u.Outpoint == job.outpoint()) match_found = true;
         }
         
-        if (!match_found) {
-            //std::cout << " warning: " << job.outpoint() << " not found in whatsonchain utxos" << std::endl;
-            
-            count_closed_job(job);
-        }
+        if (!match_found) count_closed_job(job);
         
     }
     
@@ -140,14 +111,12 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
     uint32 count_open_jobs = 0;
     
     for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
-        if (it->second.UTXOs.size() == 0) it = Jobs.erase(it);
+        if (it->second.Prevouts.size() == 0) it = Jobs.erase(it);
         else {
             count_open_jobs++;
-            if (it->second.UTXOs.size() > 1) count_jobs_with_multiple_outputs++;
+            if (it->second.Prevouts.size() > 1) count_jobs_with_multiple_outputs++;
             ++it;
         }
-    
-    //std::cout << "found " << count_open_jobs << " jobs that are not redeemed already" << std::endl;
     
     logger::log("api.jobs.report", json {
         {"jobs_returned_by_API", jobs_api_call.size()},

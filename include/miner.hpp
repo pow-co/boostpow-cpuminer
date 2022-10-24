@@ -2,70 +2,25 @@
 #define BOOSTMINER_MINER
 
 #include <gigamonkey/boost/boost.hpp>
+#include <gigamonkey/schema/keysource.hpp>
 #include <random.hpp>
-#include <keys.hpp>
 #include <whatsonchain_api.hpp>
 #include <thread>
+#include <condition_variable>
 
 namespace BoostPOW {
-
-    struct prevouts {
-        Boost::output_script Script;
-        
-        list<utxo> UTXOs;
-        
-        Bitcoin::satoshi Value;
-        
-        prevouts() = default;
-        prevouts(const Boost::output_script &script, list<utxo> utxos) : 
-            Script{script}, UTXOs{utxos}, Value{
-                data::fold([](const Bitcoin::satoshi so_far, const utxo &u) -> Bitcoin::satoshi {
-                    return so_far + u.Value;
-                }, Bitcoin::satoshi{0}, UTXOs)} {}
-        
-        double difficulty() const {
-            return double(work::difficulty(Script.Target));
-        }
-        
-        double profitability() const {
-            return double(Value) / difficulty();
-        }
-        
-        bool operator==(const prevouts &pp) const {
-            return Script == pp.Script && UTXOs == pp.UTXOs;
-        }
-        
-        void add(const utxo &u) {
-            UTXOs = UTXOs << u;
-            Value += u.Value;
-        }
-        
-        Boost::puzzle to_puzzle(const Bitcoin::secret &key) const;
-        
-        explicit operator json() const;
-        
-    };
     
-    struct jobs : std::map<digest256, prevouts> {
+    struct jobs : std::map<digest256, Boost::candidate> {
         
-        digest256 add_script(const Boost::output_script &z) {
-            auto script_hash = SHA2_256(z.write());
-            auto script_location = this->find(script_hash);
-            if (script_location == this->end()) (*this)[script_hash] = prevouts{z, {}};
-            return script_hash;
-        }
-        
-        void add_utxo(const digest256 &script_hash, const utxo &u) {
-            auto script_location = this->find(script_hash);
-            if (script_location != this->end()) script_location->second.add(u);
-        }
+        digest256 add_script(const Boost::output_script &z);
+        void add_prevout(const digest256 &script_hash, const Boost::prevout &u);
         
         explicit operator json() const;
         
     };
     
     // select a puzzle optimally. 
-    std::pair<digest256, prevouts> select(random &, const jobs &, double minimum_profitability = 0);
+    std::pair<digest256, Boost::candidate> select(random &, const jobs &, double minimum_profitability = 0);
     
     Bitcoin::transaction mine(
         random &, 
@@ -82,14 +37,14 @@ namespace BoostPOW {
         double maximum_mining_difficulty = -1);
     
     struct channel_outer {
-        virtual void update(const work::puzzle &) = 0;
+        virtual void update(const std::pair<digest256, work::puzzle> &) = 0;
         virtual work::solution wait(uint32 wait_time_seconds) = 0;
     };
 
     struct channel_inner {
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        virtual const work::puzzle latest() = 0;
+        virtual std::pair<digest256, work::puzzle> latest() = 0;
         
         virtual void solved(const work::solution &) = 0;
     };
@@ -101,13 +56,13 @@ namespace BoostPOW {
         std::condition_variable In;
         std::condition_variable Out;
         
-        work::puzzle Puzzle;
+        std::pair<digest256, work::puzzle> Puzzle;
         bool Set;
         
         work::solution Solution;
         bool Solved;
         
-        void update(const work::puzzle &p) final override {
+        void update(const std::pair<digest256, work::puzzle> &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
             Puzzle = p;
             Solved = false;
@@ -117,7 +72,7 @@ namespace BoostPOW {
         
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        const work::puzzle latest() final override {
+        std::pair<digest256, work::puzzle> latest() final override {
             std::unique_lock<std::mutex> lock(Mutex);
             if (!Set) In.wait(lock);
             return Puzzle;
@@ -142,8 +97,8 @@ namespace BoostPOW {
     
     struct miner {
         miner(
-            ptr<key_generator> keys, 
-            ptr<address_generator> addresses, 
+            ptr<key_source> keys, 
+            ptr<address_source> addresses, 
             uint32 threads, uint64 random_seed, 
             double minimum_profitability, 
             double fee_rate) :
@@ -156,8 +111,8 @@ namespace BoostPOW {
         Bitcoin::transaction wait(uint32 wait_time_seconds);
         
     private:
-        ptr<key_generator> Keys;
-        ptr<address_generator> Addresses;
+        ptr<key_source> Keys;
+        ptr<address_source> Addresses;
         uint32 Threads; 
         uint64 Seed;
         double MinProfitability;
@@ -167,7 +122,7 @@ namespace BoostPOW {
         channel Channel;
         
         jobs Jobs;
-        std::pair<digest256, prevouts> Selected;
+        std::pair<digest256, Boost::candidate> Selected;
         Boost::puzzle Current;
         
         // start threads if not already. 
@@ -181,6 +136,8 @@ namespace BoostPOW {
     
     string write(const Bitcoin::txid &);
     string write(const Bitcoin::outpoint &);
+    json to_json(const Boost::candidate::prevout &);
+    json to_json(const Boost::candidate &);
 
 }
 

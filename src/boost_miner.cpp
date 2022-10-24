@@ -1,13 +1,14 @@
-#include <boost/program_options.hpp>
-#include <gigamonkey/script/typed_data_bip_276.hpp>
-#include <gigamonkey/p2p/var_int.hpp>
+
 #include <network.hpp>
 #include <ctime>
 #include <wallet.hpp>
 #include <logger.hpp>
 #include <random.hpp>
-#include <keys.hpp>
 #include <miner.hpp>
+#include <boost/program_options.hpp>
+#include <gigamonkey/script/typed_data_bip_276.hpp>
+#include <gigamonkey/p2p/var_int.hpp>
+#include <gigamonkey/schema/hd.hpp>
 
 using namespace Gigamonkey;
 
@@ -237,12 +238,18 @@ int command_redeem(int arg_count, char** arg_values) {
     
     Bitcoin::transaction redeem_tx = BoostPOW::mine(
         random, 
-        Boost::puzzle{{
-            Boost::prevout{
-                Bitcoin::outpoint{txid, index}, 
-                Boost::output{Bitcoin::satoshi{value}, boost_script}}
-        }, key}, address, 86400, // one day. 
-        min_profitability, max_difficulty, fee_rate);
+        Boost::puzzle{
+            Boost::candidate{
+                boost_script, 
+                {Boost::candidate::prevout{
+                    Bitcoin::outpoint{txid, index}, 
+                    Bitcoin::satoshi{value}}}}, 
+            key}, 
+        address, 
+        86400, // one day. 
+        min_profitability, 
+        max_difficulty, 
+        fee_rate);
     
     bytes redeem_tx_raw = bytes(redeem_tx);
     std::string redeem_txhex = data::encoding::hex::write(redeem_tx_raw);
@@ -306,32 +313,32 @@ int command_mine(int arg_count, char** arg_values) {
     if (threads == 0) throw string{"Need at least 1 thread."};
     if (fee_rate < 0) throw string{"Fee rate must be positive"};
     
-    ptr<key_generator> signing_keys;
-    ptr<address_generator> receiving_addresses;
+    ptr<key_source> signing_keys;
+    ptr<address_source> receiving_addresses;
     
     Bitcoin::secret key{key_string};
     hd::bip32::secret hd_key{key_string};
     
     if (key.valid()) signing_keys = 
-        std::static_pointer_cast<key_generator>(std::make_shared<single_key_generator>(key));
+        std::static_pointer_cast<key_source>(std::make_shared<single_key_source>(key));
     else if (hd_key.valid()) signing_keys = 
-        std::static_pointer_cast<key_generator>(std::make_shared<hd_key_generator>(hd_key));
+        std::static_pointer_cast<key_source>(std::make_shared<hd::key_source>(hd_key));
     else throw string{"could not read signing key"};
     
     if (address_string == "") {
         if (key.valid()) receiving_addresses = 
-            std::static_pointer_cast<address_generator>(std::make_shared<single_address_generator>(key.address()));
+            std::static_pointer_cast<address_source>(std::make_shared<single_address_source>(key.address()));
         else if (hd_key.valid()) receiving_addresses = 
-            std::static_pointer_cast<address_generator>(std::make_shared<hd_address_generator>(hd_key.to_public()));
+            std::static_pointer_cast<address_source>(std::make_shared<hd::address_source>(hd_key.to_public()));
         else throw string{"could not read signing key"};
     } else {
         Bitcoin::address address{address_string};
         hd::bip32::pubkey hd_pubkey{address_string};
         
         if (address.valid()) receiving_addresses = 
-            std::static_pointer_cast<address_generator>(std::make_shared<single_address_generator>(address));
+            std::static_pointer_cast<address_source>(std::make_shared<single_address_source>(address));
         else if (hd_pubkey.valid()) receiving_addresses = 
-            std::static_pointer_cast<address_generator>(std::make_shared<hd_address_generator>(hd_pubkey));
+            std::static_pointer_cast<address_source>(std::make_shared<hd::address_source>(hd_pubkey));
         else throw string{"could not read signing key"};
     }
     
