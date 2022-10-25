@@ -85,7 +85,7 @@ void pow_co::submit_proof(const Bitcoin::txid &txid) {
 
 bool pow_co::broadcast(const bytes &tx) {
     
-    auto request = this->Rest.POST("/api/v1/transactions/", 
+    auto request = this->Rest.POST("/api/v1/transactions", 
         {{networking::HTTP::header::content_type, "application/json"}}, 
         json{{"transaction", encoding::hex::write(tx)}}.dump());
     
@@ -94,10 +94,14 @@ bool pow_co::broadcast(const bytes &tx) {
     if (static_cast<unsigned int>(response.Status) >= 500) 
         throw networking::HTTP::exception{request, response, string{"problem reading txid."}};
     
-    if (static_cast<unsigned int>(response.Status) != 200) return false;
+    if (static_cast<unsigned int>(response.Status) != 200) {
+        std::cout << "pow co returns response code " << response.Status << std::endl;
+        return false;
+    }
     
+    std::cout << " pow co broadcast response body: " << response.Body << std::endl;
     try {
-        return json::parse(response.Body)["error"] == 0;
+        return !json::parse(response.Body).contains("error");
     } catch (const json::exception &) {
         return false;
     }

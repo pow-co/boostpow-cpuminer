@@ -5,11 +5,36 @@
 bool BoostPOW::network::broadcast(const bytes &tx) {
     std::cout << "broadcasting tx " << std::endl;
     
-    bool broadcast_whatsonchain = WhatsOnChain.transaction().broadcast(tx); 
-    bool broadcast_gorilla = Gorilla.submit_transaction({tx}).ReturnResult == BitcoinAssociation::MAPI::success;
-    bool broadcast_pow_co = PowCo.broadcast(tx);
+    bool broadcast_whatsonchain; 
+    bool broadcast_gorilla;
+    bool broadcast_pow_co;
     
-    return broadcast_whatsonchain || broadcast_gorilla || broadcast_pow_co;
+    try {
+        broadcast_whatsonchain = WhatsOnChain.transaction().broadcast(tx); 
+    } catch (networking::HTTP::exception ex) {
+        std::cout << "exception caught broadcasting whatsonchain." << ex.what() << std::endl;
+        broadcast_whatsonchain = false;
+    }
+    
+    try {
+        broadcast_gorilla = Gorilla.submit_transaction({tx}).ReturnResult == BitcoinAssociation::MAPI::success;
+    } catch (networking::HTTP::exception ex) {
+        std::cout << "exception caught broadcasting gorilla: " << ex.what() << "; response code = " << ex.Response.Status << std::endl;
+        broadcast_gorilla = false;
+    }
+    
+    try {
+        broadcast_pow_co = PowCo.broadcast(tx);
+    } catch (networking::HTTP::exception ex) {
+        std::cout << "exception caught broadcasting powco: " << ex.what() << std::endl;
+        broadcast_pow_co = false;
+    }
+    
+    std::cout << "broadcast results: Whatsonchain = " << std::boolalpha << 
+        broadcast_whatsonchain << "; gorilla = "<< broadcast_gorilla << "; pow_co = " << broadcast_pow_co << std::endl;
+    
+    // we don't count whatsonchain because that one seems to return false positives a lot. 
+    return broadcast_gorilla || broadcast_pow_co;
 }
 
 bytes BoostPOW::network::get_transaction(const Bitcoin::txid &txid) {

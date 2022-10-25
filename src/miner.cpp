@@ -273,8 +273,23 @@ namespace BoostPOW {
         delete r;
     }
     
-    void miner::update(const jobs &j) {
-        start();
+    void miner::start() {
+        if (Workers.size() != 0) return;
+        std::cout << "starting " << Threads << " threads." << std::endl;
+        for (int i = 1; i <= Threads; i++) 
+            Workers.emplace_back(&mining_thread, 
+                &static_cast<channel_inner&>(Channel), 
+                new casual_random{Seed + i}, i);
+    }
+    
+    miner::~miner() {
+        Channel.update({});
+        
+        for (auto &thread : Workers) thread.join();
+    }
+    
+    void manager::update(const jobs &j) {
+        this->start();
         Jobs = j;
         
         // select a new job if now job has been selected. 
@@ -286,7 +301,7 @@ namespace BoostPOW {
         if (it == j.end() || it->second.Value != Selected.second.Value) select_and_update_job();
     }
     
-    void miner::select_and_update_job() {
+    void manager::select_and_update_job() {
         Selected = select(Random, Jobs, MinProfitability);
         
         logger::log("job.selected", json {
@@ -300,23 +315,8 @@ namespace BoostPOW {
         Channel.update({Selected.first, work::puzzle(Current)});
     }
     
-    miner::~miner() {
-        Channel.update({});
-        
-        for (auto &thread : Workers) thread.join();
-    }
-    
-    void miner::start() {
-        if (Workers.size() != 0) return;
-        std::cout << "starting " << Threads << " threads." << std::endl;
-        for (int i = 1; i <= Threads; i++) 
-            Workers.emplace_back(&mining_thread, 
-                &static_cast<channel_inner&>(Channel), 
-                new casual_random{Seed + i}, i);
-    }
-    
-    Bitcoin::transaction miner::wait(uint32 wait_time_seconds) {
-        auto solution = Channel.wait(wait_time_seconds);
+    Bitcoin::transaction manager::wait(uint32 wait_time_seconds) {
+        auto solution = this->Channel.wait(wait_time_seconds);
         if (!solution.valid()) return {};
         
         bool tx_valid = work::proof{work::puzzle(Current), solution}.valid();
