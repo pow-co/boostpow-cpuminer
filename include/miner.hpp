@@ -97,15 +97,35 @@ namespace BoostPOW {
     
     struct miner {
         miner(
+            uint32 threads, uint64 random_seed) :
+            Threads{threads}, Seed{random_seed}, 
+            Channel{}, Workers{} {}
+        ~miner();
+        
+        uint32 Threads; 
+        uint64 Seed;
+        
+        channel Channel;
+        
+        // start threads if not already. 
+        void start();
+        
+    private:
+        
+        std::vector<std::thread> Workers;
+        
+    };
+    
+    struct manager : miner {
+        manager(
             ptr<key_source> keys, 
             ptr<address_source> addresses, 
             uint32 threads, uint64 random_seed, 
             double minimum_profitability, 
-            double fee_rate) :
-            Keys{keys}, Addresses{addresses}, Threads{threads}, Seed{random_seed}, 
+            double fee_rate) : miner{threads, random_seed}, 
+            Keys{keys}, Addresses{addresses}, 
             MinProfitability{minimum_profitability}, FeeRate{fee_rate}, 
-            Channel{}, Random{Seed}, Jobs{}, Selected{}, Current{}, Workers{} {}
-        ~miner();
+            Random{Seed}, Jobs{}, Selected{}, Current{} {}
         
         void update(const jobs &j);
         Bitcoin::transaction wait(uint32 wait_time_seconds);
@@ -113,20 +133,14 @@ namespace BoostPOW {
     private:
         ptr<key_source> Keys;
         ptr<address_source> Addresses;
-        uint32 Threads; 
-        uint64 Seed;
         double MinProfitability;
         double FeeRate;
         
         casual_random Random;
-        channel Channel;
         
         jobs Jobs;
         std::pair<digest256, Boost::candidate> Selected;
         Boost::puzzle Current;
-        
-        // start threads if not already. 
-        void start();
         
         void select_and_update_job();
         

@@ -344,7 +344,7 @@ int command_mine(int arg_count, char** arg_values) {
     
     BoostPOW::network net{};
     
-    BoostPOW::miner miner{signing_keys, receiving_addresses, threads, 
+    BoostPOW::manager miner{signing_keys, receiving_addresses, threads, 
         std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, min_profitability, fee_rate};
     
     try {
