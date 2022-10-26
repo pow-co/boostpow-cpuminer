@@ -6,7 +6,7 @@
 #include <network.hpp>
 
 int command_generate(int arg_count, char** arg_values) {
-    if (arg_count != 1) throw "invalid number of arguments; one expected.";
+    if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
     
     std::string filename{arg_values[0]};
     
@@ -36,7 +36,7 @@ int command_generate(int arg_count, char** arg_values) {
 }
 
 int command_receive(int arg_count, char** arg_values) {
-    if (arg_count != 1) throw "invalid number of arguments; one expected.";
+    if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
     
     std::string filename{arg_values[0]};
     auto w = read_wallet_from_file(filename);
@@ -70,7 +70,7 @@ int command_import(int arg_count, char** arg_values) {
     std::stringstream{arg_value} >> value;
     
     Bitcoin::secret key{arg_wif};
-    if (!key.valid()) throw "could not read secret key";
+    if (!key.valid()) throw string {"could not read secret key"};
     
     auto w = read_wallet_from_file(filename);
     
@@ -91,7 +91,7 @@ int command_send(int arg_count, char** arg_values) {
 }
 
 int command_value(int arg_count, char** arg_values) {
-    if (arg_count != 1) throw "invalid number of arguments; one expected.";
+    if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
     
     std::string filename{arg_values[0]};
     std::cout << read_wallet_from_file(filename).value() << std::endl;
@@ -113,7 +113,7 @@ int command_boost(int arg_count, char** arg_values) {
     
     Bitcoin::satoshi value = satoshi_value;
     
-    if (value > w.value()) throw "insufficient funds";
+    if (value > w.value()) throw string {"insufficient funds"};
     
     string arg_content{arg_values[2]};
     
@@ -172,7 +172,7 @@ int command_boost(int arg_count, char** arg_values) {
         boost_output_index++;
     }
     
-    if (boost_output_index == spend.Transaction.Outputs.size()) throw "could not find boost output index";
+    if (boost_output_index == spend.Transaction.Outputs.size()) throw string {"could not find boost output index"};
     
     BoostPOW::network net{};
     

@@ -128,139 +128,6 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     return output_script;
 }
 
-struct manager : BoostPOW::miner {
-    manager(
-        ptr<key_source> keys, 
-        ptr<address_source> addresses, 
-        uint32 threads, uint64 random_seed, 
-        double maximum_difficulty, 
-        double minimum_profitability, 
-        double fee_rate) : BoostPOW::miner{threads, random_seed}, Net{}, Keys{keys}, Addresses{addresses}, 
-        MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
-        FeeRate{fee_rate}, Random{Seed}, Jobs{}, Selected{}, Current{}, Workers{} {}
-    
-    void run();
-    
-private:
-    BoostPOW::network Net;
-    ptr<key_source> Keys;
-    ptr<address_source> Addresses;
-    double MaxDifficulty;
-    double MinProfitability;
-    double FeeRate;
-    
-    BoostPOW::casual_random Random;
-    
-    BoostPOW::jobs Jobs;
-    std::pair<digest256, Boost::candidate> Selected;
-    Boost::puzzle Current;
-    
-    std::vector<std::thread> Workers;
-    
-    void solved(const work::solution &) override;
-    
-    void update_jobs(const BoostPOW::jobs &j);
-    void select_job();
-    
-};
-
-void manager::update_jobs(const BoostPOW::jobs &j) {
-    Jobs = j;
-    uint32 count_jobs = Jobs.size();
-    if (count_jobs == 0) return;
-    
-    // remove jobs that are too difficult. 
-    if (MaxDifficulty > 0) {
-        for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
-            if (it->second.difficulty() > MaxDifficulty) 
-                it = Jobs.erase(it);
-            else ++it;
-        
-        std::cout << (count_jobs - Jobs.size()) << " jobs removed due to high difficulty." << std::endl;
-    }
-    
-    uint32 unprofitable_jobs = 0;
-    for (auto it = Jobs.cbegin(); it != Jobs.cend(); it++) 
-        if (it->second.profitability() < MinProfitability) 
-            unprofitable_jobs++;
-    
-    uint32 viable_jobs = Jobs.size() - unprofitable_jobs;
-    
-    std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << 
-    viable_jobs << " jobs remaining " << std::endl;
-    
-    if (viable_jobs == 0) return;
-    
-    this->start();
-    
-    // select a new job if now job has been selected. 
-    if (Selected.first == digest256{}) return select_job();
-    
-    auto it = j.find(Selected.first);
-    
-    // job has been invalidated. 
-    if (it == j.end() || it->second.Value != Selected.second.Value) select_job();
-}
-
-void manager::select_job() {
-    Selected = select(Random, Jobs, MinProfitability);
-    
-    logger::log("job.selected", json {
-        {"script_hash", BoostPOW::write(Selected.first)},
-        {"difficulty", Selected.second.difficulty()},
-        {"profitability", Selected.second.profitability()},
-        {"job", BoostPOW::to_json(Selected.second)}
-    });
-    
-    Current = Boost::puzzle{Selected.second, Keys->next()};
-    update({Selected.first, work::puzzle(Current)});
-}
-
-void manager::solved(const work::solution &solution) {
-    if (!solution.valid()) return;
-    
-    bool tx_valid;
-    {
-        std::unique_lock<std::mutex> lock(Mutex);
-        tx_valid = work::proof{Puzzle.second, solution}.valid();
-    }
-    
-    std::cout << "Solution found! valid? " << std::boolalpha << 
-        tx_valid << std::endl;
-    
-    if (!tx_valid) {
-        select_job();
-        return;
-    }
-    
-    auto value = Selected.second.Value;
-    bytes pay_script = pay_to_address::script(Addresses->next().Digest);
-    Bitcoin::satoshi fee = BoostPOW::calculate_fee(Current.expected_size(), pay_script.size(), FeeRate);
-    
-    if (fee > value) throw string{"Cannot pay tx fee with boost output"};
-    
-    auto redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
-    Jobs.erase(Jobs.find(Selected.first));
-    select_job();
-    
-    if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
-}
-
-void manager::run() {
-    
-    while(true) {
-        std::cout << "calling API" << std::endl;
-        try {
-            update_jobs(Net.jobs(100));
-        } catch (const networking::HTTP::exception &exception) {
-            std::cout << "API problem: " << exception.what() << std::endl;
-        }
-        
-        std::this_thread::sleep_for (std::chrono::seconds(900));
-        
-    }
-}
-
 int command_spend(int arg_count, char** arg_values) {
     if (arg_count < 4 || arg_count > 5) throw std::string{"invalid number of arguments; should be 4 or 5"};
     auto output_script = read_output_script(arg_count, arg_values);
@@ -270,6 +137,21 @@ int command_spend(int arg_count, char** arg_values) {
     
     return 0;
 }
+
+struct redeemer : BoostPOW::miner {
+    redeemer(
+        uint32 threads, uint64 random_seed) : 
+        BoostPOW::miner{threads, random_seed}, 
+        Net{} {}
+    
+protected:
+    BoostPOW::network Net;
+    
+    void redeemed(const Bitcoin::transaction &redeem_tx) override {
+        if (!redeem_tx.valid()) std::cout << "invalid transaction!" << std::endl;
+        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+    }
+};
 
 int command_redeem(int arg_count, char** arg_values) {
     namespace po = boost::program_options;
@@ -398,6 +280,118 @@ int command_redeem(int arg_count, char** arg_values) {
     return 0;
 }
 
+struct manager : BoostPOW::miner {
+    manager(
+        ptr<key_source> keys, 
+        ptr<address_source> addresses, 
+        uint32 threads, uint64 random_seed, 
+        double maximum_difficulty, 
+        double minimum_profitability, 
+        double fee_rate) : BoostPOW::miner{threads, random_seed}, Net{}, Keys{keys}, Addresses{addresses}, 
+        MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
+        FeeRate{fee_rate}, Random{Seed}, Jobs{}, Selected{}, Workers{} {}
+    
+    void run();
+    
+private:
+    BoostPOW::network Net;
+    ptr<key_source> Keys;
+    ptr<address_source> Addresses;
+    double MaxDifficulty;
+    double MinProfitability;
+    double FeeRate;
+    
+    BoostPOW::casual_random Random;
+    
+    BoostPOW::jobs Jobs;
+    std::pair<digest256, Boost::candidate> Selected;
+    
+    std::vector<std::thread> Workers;
+    
+    void redeemed(const Bitcoin::transaction &redeem_tx) override;
+    
+    void update_jobs(const BoostPOW::jobs &j);
+    void select_job();
+    
+};
+
+void manager::update_jobs(const BoostPOW::jobs &j) {
+    Jobs = j;
+    uint32 count_jobs = Jobs.size();
+    if (count_jobs == 0) return;
+    
+    // remove jobs that are too difficult. 
+    if (MaxDifficulty > 0) {
+        for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
+            if (it->second.difficulty() > MaxDifficulty) 
+                it = Jobs.erase(it);
+            else ++it;
+        
+        std::cout << (count_jobs - Jobs.size()) << " jobs removed due to high difficulty." << std::endl;
+    }
+    
+    uint32 unprofitable_jobs = 0;
+    for (auto it = Jobs.cbegin(); it != Jobs.cend(); it++) 
+        if (it->second.profitability() < MinProfitability) 
+            unprofitable_jobs++;
+    
+    uint32 viable_jobs = Jobs.size() - unprofitable_jobs;
+    
+    std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << 
+    viable_jobs << " jobs remaining " << std::endl;
+    
+    if (viable_jobs == 0) return;
+    
+    // select a new job if now job has been selected. 
+    if (Selected.first == digest256{}) return select_job();
+    
+    auto it = j.find(Selected.first);
+    
+    // job has been invalidated. 
+    if (it == j.end() || it->second.Value != Selected.second.Value) select_job();
+}
+
+void manager::select_job() {
+    Selected = select(Random, Jobs, MinProfitability);
+    
+    logger::log("job.selected", json {
+        {"script_hash", BoostPOW::write(Selected.first)},
+        {"difficulty", Selected.second.difficulty()},
+        {"profitability", Selected.second.profitability()},
+        {"job", BoostPOW::to_json(Selected.second)}
+    });
+    
+    this->mine(Boost::puzzle{Selected.second, Keys->next()}, Addresses->next(), .5);
+    
+}
+
+void manager::run() {
+    
+    while(true) {
+        std::cout << "calling API" << std::endl;
+        try {
+            update_jobs(Net.jobs(100));
+        } catch (const networking::HTTP::exception &exception) {
+            std::cout << "API problem: " << exception.what() << std::endl;
+        }
+        
+        std::this_thread::sleep_for (std::chrono::seconds(900));
+        
+    }
+}
+
+void manager::redeemed(const Bitcoin::transaction &redeem_tx) {
+    if (!redeem_tx.valid()) {
+        select_job();
+        return;
+    }
+    
+    Jobs.erase(Jobs.find(Selected.first));
+    select_job();
+    
+    if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+}
+
 int command_mine(int arg_count, char** arg_values) {
     namespace po = boost::program_options;
     
@@ -504,7 +498,7 @@ int help() {
         "\n\taddress    -- (optional) your address where you will put the redeemed sats."
         "\n\t              If not provided, addresses will be generated from the key. " 
         "\noptions for functions \"redeem\" and \"mine\" are " 
-        "\n\tthreads           -- Number of threads to mine with. Default is 1. (does not work yet)"
+        "\n\tthreads           -- Number of threads to mine with. Default is 1."
         "\n\tmin_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
         "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored."
         "\n\tfee_rate          -- sats per byte of the final transaction." << std::endl;
