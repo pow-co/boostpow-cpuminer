@@ -25,6 +25,7 @@ namespace BoostPOW {
         BoostPOW::jobs jobs(uint32 limit = 10);
         
         bytes get_transaction(const Bitcoin::txid &);
+        
     };
     
 }

@@ -233,14 +233,14 @@ namespace BoostPOW {
         if (script_location == this->end()) (*this)[script_hash] = Boost::candidate{z, {}};
         return script_hash;
     }
-    
+
     void jobs::add_prevout(const digest256 &script_hash, const Boost::prevout &u) {
         auto script_location = this->find(script_hash);
         if (script_location != this->end()) {
             script_location->second = script_location->second.add(u);
         }
     }
-    
+
     jobs::operator json() const {
         json::object_t puz;
         
@@ -278,63 +278,14 @@ namespace BoostPOW {
         std::cout << "starting " << Threads << " threads." << std::endl;
         for (int i = 1; i <= Threads; i++) 
             Workers.emplace_back(&mining_thread, 
-                &static_cast<channel_inner&>(Channel), 
+                &static_cast<channel_inner&>(*this), 
                 new casual_random{Seed + i}, i);
     }
     
     miner::~miner() {
-        Channel.update({});
+        update({});
         
         for (auto &thread : Workers) thread.join();
-    }
-    
-    void manager::update(const jobs &j) {
-        this->start();
-        Jobs = j;
-        
-        // select a new job if now job has been selected. 
-        if (Selected.first == digest256{}) return select_and_update_job();
-        
-        auto it = j.find(Selected.first);
-        
-        // job has been invalidated. 
-        if (it == j.end() || it->second.Value != Selected.second.Value) select_and_update_job();
-    }
-    
-    void manager::select_and_update_job() {
-        Selected = select(Random, Jobs, MinProfitability);
-        
-        logger::log("job.selected", json {
-            {"script_hash", write(Selected.first)},
-            {"difficulty", Selected.second.difficulty()},
-            {"profitability", Selected.second.profitability()},
-            {"job", to_json(Selected.second)}
-        });
-        
-        Current = Boost::puzzle{Selected.second, Keys->next()};
-        Channel.update({Selected.first, work::puzzle(Current)});
-    }
-    
-    Bitcoin::transaction manager::wait(uint32 wait_time_seconds) {
-        auto solution = this->Channel.wait(wait_time_seconds);
-        if (!solution.valid()) return {};
-        
-        bool tx_valid = work::proof{work::puzzle(Current), solution}.valid();
-        std::cout << "Solution found! valid? " << std::boolalpha << 
-            work::proof{work::puzzle(Current), solution}.valid() << std::endl;
-        if (!tx_valid) return {};
-        
-        auto value = Selected.second.Value;
-        bytes pay_script = pay_to_address::script(Addresses->next().Digest);
-        Bitcoin::satoshi fee = calculate_fee(Current.expected_size(), pay_script.size(), FeeRate);
-        
-        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
-        
-        auto redeem_tx = redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
-        Jobs.erase(Jobs.find(Selected.first));
-        select_and_update_job();
-        
-        return redeem_tx;
     }
     
 }
