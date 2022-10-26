@@ -4,9 +4,9 @@
 #include <gigamonkey/boost/boost.hpp>
 #include <gigamonkey/schema/keysource.hpp>
 #include <random.hpp>
-#include <whatsonchain_api.hpp>
 #include <thread>
 #include <condition_variable>
+#include <mutex>
 
 namespace BoostPOW {
     
@@ -36,9 +36,12 @@ namespace BoostPOW {
         double minimum_price_per_difficulty_sats, 
         double maximum_mining_difficulty = -1);
     
+    
+    Bitcoin::satoshi calculate_fee(size_t inputs_size, size_t pay_script_size, double fee_rate);
+    Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
+    
     struct channel_outer {
         virtual void update(const std::pair<digest256, work::puzzle> &) = 0;
-        virtual work::solution wait(uint32 wait_time_seconds) = 0;
     };
 
     struct channel_inner {
@@ -54,19 +57,12 @@ namespace BoostPOW {
     struct channel : channel_outer, channel_inner {
         std::mutex Mutex;
         std::condition_variable In;
-        std::condition_variable Out;
         
         std::pair<digest256, work::puzzle> Puzzle;
-        bool Set;
-        
-        work::solution Solution;
-        bool Solved;
         
         void update(const std::pair<digest256, work::puzzle> &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
             Puzzle = p;
-            Solved = false;
-            Set = true;
             In.notify_all();
         }
         
@@ -74,76 +70,27 @@ namespace BoostPOW {
         // pointer will be null if the thread is supposed to stop. 
         std::pair<digest256, work::puzzle> latest() final override {
             std::unique_lock<std::mutex> lock(Mutex);
-            if (!Set) In.wait(lock);
+            if (!Puzzle.first.valid()) In.wait(lock);
             return Puzzle;
         }
         
-        void solved(const work::solution &x) final override {
-            std::lock_guard<std::mutex> lock(Mutex);
-            Solution = x;
-            Solved = true;
-            Out.notify_one();
-        }
-        
-        work::solution wait(uint32 wait_time_seconds) final override {
-            std::unique_lock<std::mutex> lock(Mutex);
-            Out.wait_for(lock, std::chrono::seconds(wait_time_seconds));
-            return Solution;
-        }
-        
-        channel() : Mutex{}, In{}, Out{}, Puzzle{}, Set{false}, Solution{}, Solved{false} {}
+        channel() : Mutex{}, In{}, Puzzle{} {}
         
     };
     
-    struct miner {
+    struct miner : channel {
         miner(
             uint32 threads, uint64 random_seed) :
-            Threads{threads}, Seed{random_seed}, 
-            Channel{}, Workers{} {}
+            Threads{threads}, Seed{random_seed}, Workers{} {}
         ~miner();
         
         uint32 Threads; 
         uint64 Seed;
         
-        channel Channel;
-        
         // start threads if not already. 
         void start();
         
     private:
-        
-        std::vector<std::thread> Workers;
-        
-    };
-    
-    struct manager : miner {
-        manager(
-            ptr<key_source> keys, 
-            ptr<address_source> addresses, 
-            uint32 threads, uint64 random_seed, 
-            double minimum_profitability, 
-            double fee_rate) : miner{threads, random_seed}, 
-            Keys{keys}, Addresses{addresses}, 
-            MinProfitability{minimum_profitability}, FeeRate{fee_rate}, 
-            Random{Seed}, Jobs{}, Selected{}, Current{} {}
-        
-        void update(const jobs &j);
-        Bitcoin::transaction wait(uint32 wait_time_seconds);
-        
-    private:
-        ptr<key_source> Keys;
-        ptr<address_source> Addresses;
-        double MinProfitability;
-        double FeeRate;
-        
-        casual_random Random;
-        
-        jobs Jobs;
-        std::pair<digest256, Boost::candidate> Selected;
-        Boost::puzzle Current;
-        
-        void select_and_update_job();
-        
         std::vector<std::thread> Workers;
         
     };

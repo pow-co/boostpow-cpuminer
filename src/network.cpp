@@ -1,8 +1,12 @@
 
 #include <network.hpp>
 #include <logger.hpp>
+#include <mutex>
+
+std::mutex Mutex;
 
 bool BoostPOW::network::broadcast(const bytes &tx) {
+    std::lock_guard<std::mutex> lock(Mutex);
     std::cout << "broadcasting tx " << std::endl;
     
     bool broadcast_whatsonchain; 
