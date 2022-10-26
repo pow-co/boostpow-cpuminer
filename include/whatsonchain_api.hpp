@@ -6,21 +6,21 @@
 
 using namespace Gigamonkey;
 
-struct utxo {
+struct UTXO {
     
     Bitcoin::outpoint Outpoint;
     Bitcoin::satoshi Value;
     uint32 Height;
     
-    utxo();
-    utxo(const json &);
+    UTXO();
+    UTXO(const JSON &);
     bool valid() const;
     
-    bool operator==(const utxo &u) const {
+    bool operator==(const UTXO &u) const {
         return Outpoint == u.Outpoint && Value == u.Value && Height == u.Height;
     }
     
-    explicit operator json() const;
+    explicit operator JSON() const;
     
 };
 
@@ -44,7 +44,7 @@ struct whatsonchain : networking::HTTP_client {
         
         list<transaction_info> get_history(const Bitcoin::address &);
         
-        list<utxo> get_unspent(const Bitcoin::address &);
+        list<UTXO> get_unspent(const Bitcoin::address &);
         
         whatsonchain &API;
     };
@@ -64,7 +64,7 @@ struct whatsonchain : networking::HTTP_client {
     
     struct scripts {
         
-        list<utxo> get_unspent(const digest256& script_hash);
+        list<UTXO> get_unspent(const digest256& script_hash);
         list<Bitcoin::txid> get_history(const digest256& script_hash);
         
         whatsonchain &API;
@@ -87,7 +87,7 @@ whatsonchain::scripts inline whatsonchain::script() {
     return scripts {*this};
 }
 
-bool inline utxo::valid() const {
+bool inline UTXO::valid() const {
     return Value != 0;
 }
 

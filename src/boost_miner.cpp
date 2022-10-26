@@ -1,6 +1,7 @@
 #include <ctime>
 #include <logger.hpp>
 #include <network.hpp>
+#include <miner.hpp>
 #include <boost/program_options.hpp>
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/p2p/var_int.hpp>
@@ -89,7 +90,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
             use_general_purpose_bits);
         output_script_bytes = output_script.write();
 
-        logger::log("job.create", json {
+        logger::log("job.create", JSON {
             {"target", target},
             {"difficulty", diff},
             {"content", content_hash_hex},
@@ -113,7 +114,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
             use_general_purpose_bits);
         output_script_bytes = output_script.write();
 
-        logger::log("job.create", json {
+        logger::log("job.create", JSON {
             {"target", target},
             {"difficulty", diff},
             {"content", content_hash_hex},
@@ -138,10 +139,11 @@ int command_spend(int arg_count, char** arg_values) {
     return 0;
 }
 
-struct redeemer : BoostPOW::miner {
+struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
     redeemer(
         uint32 threads, uint64 random_seed) : 
-        BoostPOW::miner{threads, random_seed}, 
+        BoostPOW::redeemer{}, 
+        BoostPOW::multithreaded{threads, random_seed}, 
         Net{} {}
     
 protected:
@@ -237,7 +239,7 @@ int command_redeem(int arg_count, char** arg_values) {
     Boost::output_script boost_script{*script};
     if (!boost_script.valid()) throw string{"script is not valid"};
 
-    logger::log("job.mine", json {
+    logger::log("job.mine", JSON {
       {"script", script_string},
       {"value", value},
       {"txid", txid_string},
@@ -270,7 +272,7 @@ int command_redeem(int arg_count, char** arg_values) {
     std::stringstream txid_stream;
     txid_stream << redeem_txid;
     
-    logger::log("job.complete.transaction", json {
+    logger::log("job.complete.transaction", JSON {
       {"txid", txid_stream.str()}, 
       {"txhex", redeem_txhex}
     });
@@ -280,117 +282,18 @@ int command_redeem(int arg_count, char** arg_values) {
     return 0;
 }
 
-struct manager : BoostPOW::miner {
+struct manager final : BoostPOW::manager, BoostPOW::multithreaded {
     manager(
         ptr<key_source> keys, 
         ptr<address_source> addresses, 
         uint32 threads, uint64 random_seed, 
         double maximum_difficulty, 
         double minimum_profitability, 
-        double fee_rate) : BoostPOW::miner{threads, random_seed}, Net{}, Keys{keys}, Addresses{addresses}, 
-        MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
-        FeeRate{fee_rate}, Random{Seed}, Jobs{}, Selected{}, Workers{} {}
-    
-    void run();
-    
-private:
-    BoostPOW::network Net;
-    ptr<key_source> Keys;
-    ptr<address_source> Addresses;
-    double MaxDifficulty;
-    double MinProfitability;
-    double FeeRate;
-    
-    BoostPOW::casual_random Random;
-    
-    BoostPOW::jobs Jobs;
-    std::pair<digest256, Boost::candidate> Selected;
-    
-    std::vector<std::thread> Workers;
-    
-    void redeemed(const Bitcoin::transaction &redeem_tx) override;
-    
-    void update_jobs(const BoostPOW::jobs &j);
-    void select_job();
+        double fee_rate) : 
+        BoostPOW::manager{keys, addresses, BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability, fee_rate}, 
+        BoostPOW::multithreaded{threads, random_seed} {}
     
 };
-
-void manager::update_jobs(const BoostPOW::jobs &j) {
-    Jobs = j;
-    uint32 count_jobs = Jobs.size();
-    if (count_jobs == 0) return;
-    
-    // remove jobs that are too difficult. 
-    if (MaxDifficulty > 0) {
-        for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
-            if (it->second.difficulty() > MaxDifficulty) 
-                it = Jobs.erase(it);
-            else ++it;
-        
-        std::cout << (count_jobs - Jobs.size()) << " jobs removed due to high difficulty." << std::endl;
-    }
-    
-    uint32 unprofitable_jobs = 0;
-    for (auto it = Jobs.cbegin(); it != Jobs.cend(); it++) 
-        if (it->second.profitability() < MinProfitability) 
-            unprofitable_jobs++;
-    
-    uint32 viable_jobs = Jobs.size() - unprofitable_jobs;
-    
-    std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << 
-    viable_jobs << " jobs remaining " << std::endl;
-    
-    if (viable_jobs == 0) return;
-    
-    // select a new job if now job has been selected. 
-    if (Selected.first == digest256{}) return select_job();
-    
-    auto it = j.find(Selected.first);
-    
-    // job has been invalidated. 
-    if (it == j.end() || it->second.Value != Selected.second.Value) select_job();
-}
-
-void manager::select_job() {
-    Selected = select(Random, Jobs, MinProfitability);
-    
-    logger::log("job.selected", json {
-        {"script_hash", BoostPOW::write(Selected.first)},
-        {"difficulty", Selected.second.difficulty()},
-        {"profitability", Selected.second.profitability()},
-        {"job", BoostPOW::to_json(Selected.second)}
-    });
-    
-    this->mine(Boost::puzzle{Selected.second, Keys->next()}, Addresses->next(), .5);
-    
-}
-
-void manager::run() {
-    
-    while(true) {
-        std::cout << "calling API" << std::endl;
-        try {
-            update_jobs(Net.jobs(100));
-        } catch (const networking::HTTP::exception &exception) {
-            std::cout << "API problem: " << exception.what() << std::endl;
-        }
-        
-        std::this_thread::sleep_for (std::chrono::seconds(900));
-        
-    }
-}
-
-void manager::redeemed(const Bitcoin::transaction &redeem_tx) {
-    if (!redeem_tx.valid()) {
-        select_job();
-        return;
-    }
-    
-    Jobs.erase(Jobs.find(Selected.first));
-    select_job();
-    
-    if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
-}
 
 int command_mine(int arg_count, char** arg_values) {
     namespace po = boost::program_options;

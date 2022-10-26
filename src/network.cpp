@@ -1,5 +1,5 @@
 
-#include <network.hpp>
+#include <miner.hpp>
 #include <logger.hpp>
 #include <mutex>
 

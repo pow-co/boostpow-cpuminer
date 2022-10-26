@@ -10,16 +10,16 @@ list<Boost::prevout> pow_co::jobs(uint32 limit) {
     if (response.Status != networking::HTTP::status::ok) 
         throw networking::HTTP::exception{request, response, "response status is not ok"};
     /*
-    if (response.Headers[networking::HTTP::header::content_type] != "application/json") 
-        throw networking::HTTP::exception{request, response, "expected content type application/json"};
+    if (response.Headers[networking::HTTP::header::content_type] != "application/JSON") 
+        throw networking::HTTP::exception{request, response, "expected content type application/JSON"};
     */
     
     list<Boost::prevout> boost_jobs;
     try {
         
-        json json_jobs = json::parse(response.Body).at("jobs");
+        JSON JSON_jobs = JSON::parse(response.Body).at("jobs");
         
-        for (const json &job : json_jobs) {
+        for (const JSON &job : JSON_jobs) {
             
             uint32 index{job.at("vout")};
             
@@ -41,8 +41,8 @@ list<Boost::prevout> pow_co::jobs(uint32 limit) {
                 Boost::output{Bitcoin::satoshi{value}, script}};
             
         }
-    } catch (const json::exception &j) {
-        throw networking::HTTP::exception{request, response, string{"invalid json format: "} + string{j.what()}};
+    } catch (const JSON::exception &j) {
+        throw networking::HTTP::exception{request, response, string{"invalid JSON format: "} + string{j.what()}};
     }
     
     return boost_jobs;
@@ -64,8 +64,8 @@ inpoint pow_co::spends(const Bitcoin::outpoint &outpoint) {
     list<Boost::prevout> boost_jobs;
     try {
         if (response.Body == "") return {};
-    } catch (const json::exception &j) {
-        throw networking::HTTP::exception{request, response, string{"invalid json format: "} + string{j.what()}};
+    } catch (const JSON::exception &j) {
+        throw networking::HTTP::exception{request, response, string{"invalid JSON format: "} + string{j.what()}};
     }
     
     return {};
@@ -86,8 +86,8 @@ void pow_co::submit_proof(const Bitcoin::txid &txid) {
 bool pow_co::broadcast(const bytes &tx) {
     
     auto request = this->Rest.POST("/api/v1/transactions", 
-        {{networking::HTTP::header::content_type, "application/json"}}, 
-        json{{"transaction", encoding::hex::write(tx)}}.dump());
+        {{networking::HTTP::header::content_type, "application/JSON"}}, 
+        JSON{{"transaction", encoding::hex::write(tx)}}.dump());
     
     auto response = (*this)(request);
     
@@ -101,8 +101,8 @@ bool pow_co::broadcast(const bytes &tx) {
     
     std::cout << " pow co broadcast response body: " << response.Body << std::endl;
     try {
-        return !json::parse(response.Body).contains("error");
-    } catch (const json::exception &) {
+        return !JSON::parse(response.Body).contains("error");
+    } catch (const JSON::exception &) {
         return false;
     }
 }

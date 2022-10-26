@@ -4,7 +4,7 @@
 #include <gigamonkey/mapi/mapi.hpp>
 #include <pow_co_api.hpp>
 #include <whatsonchain_api.hpp>
-#include <miner.hpp>
+#include <jobs.hpp>
 
 using namespace Gigamonkey;
 
