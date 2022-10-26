@@ -41,13 +41,13 @@ namespace BoostPOW {
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
     
     struct channel_outer {
-        virtual void update(const std::pair<digest256, work::puzzle> &) = 0;
+        virtual void update(const work::puzzle &) = 0;
     };
 
     struct channel_inner {
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        virtual std::pair<digest256, work::puzzle> latest() = 0;
+        virtual work::puzzle latest() = 0;
         
         virtual void solved(const work::solution &) = 0;
     };
@@ -58,9 +58,9 @@ namespace BoostPOW {
         std::mutex Mutex;
         std::condition_variable In;
         
-        std::pair<digest256, work::puzzle> Puzzle;
+        work::puzzle Puzzle;
         
-        void update(const std::pair<digest256, work::puzzle> &p) final override {
+        void update(const work::puzzle &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
             Puzzle = p;
             In.notify_all();
@@ -68,9 +68,9 @@ namespace BoostPOW {
         
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        std::pair<digest256, work::puzzle> latest() final override {
+        work::puzzle latest() final override {
             std::unique_lock<std::mutex> lock(Mutex);
-            if (!Puzzle.first.valid()) In.wait(lock);
+            if (!Puzzle.valid()) In.wait(lock);
             return Puzzle;
         }
         
@@ -78,21 +78,30 @@ namespace BoostPOW {
         
     };
     
-    struct miner : channel {
+    struct miner : protected channel {
         miner(
             uint32 threads, uint64 random_seed) :
-            Threads{threads}, Seed{random_seed}, Workers{} {}
+            Threads{threads}, Seed{random_seed}, Workers{}, 
+            Current{}, RedeemAddress{}, FeeRate{} {}
         ~miner();
         
         uint32 Threads; 
         uint64 Seed;
         
         // start threads if not already. 
-        void start();
+        void start_threads();
+        
+        void mine(const Boost::puzzle &, const Bitcoin::address &, double fee_rate);
         
     private:
-        std::vector<std::thread> Workers;
+        Boost::puzzle Current;
+        Bitcoin::address RedeemAddress;
+        double FeeRate;
         
+        virtual void redeemed(const Bitcoin::transaction &) = 0;
+        void solved(const work::solution &) override;
+        
+        std::vector<std::thread> Workers;
     };
     
     string write(const Bitcoin::txid &);

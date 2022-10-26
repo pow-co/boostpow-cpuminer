@@ -13,8 +13,6 @@ namespace BoostPOW {
         uint32 initial_time = initial.Share.Timestamp.Value;
         uint32 local_initial_time = Bitcoin::timestamp::now().Value;
         
-        //if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
-        
         uint64_big extra_nonce_2; 
         std::copy(initial.Share.ExtraNonce2.begin(), initial.Share.ExtraNonce2.end(), extra_nonce_2.begin());
         
@@ -251,16 +249,13 @@ namespace BoostPOW {
     
     void mining_thread(channel_inner *ch, random *r, uint32 thread_number) {
         logger::log("begin thread", json(thread_number));
-        std::pair<digest256, work::puzzle> puzzle{};
+        work::puzzle puzzle{};
         while (true) {
-            digest256 old_job = puzzle.first;
+            
             puzzle = ch->latest();
-            if (!puzzle.first.valid()) break;
+            if (!puzzle.valid()) break;
             
-            if (old_job != puzzle.first) logger::log("begin job", 
-                json({{"number", thread_number}, {"job", write(puzzle.first)}}));
-            
-            work::proof proof = solve(*r, puzzle.second, 10);
+            work::proof proof = solve(*r, puzzle, 10);
             if (proof.valid()) {
                 std::cout << "solution found in thread " << thread_number << std::endl;
                 ch->solved(proof.Solution);
@@ -273,7 +268,7 @@ namespace BoostPOW {
         delete r;
     }
     
-    void miner::start() {
+    void miner::start_threads() {
         if (Workers.size() != 0) return;
         std::cout << "starting " << Threads << " threads." << std::endl;
         for (int i = 1; i <= Threads; i++) 
@@ -286,6 +281,38 @@ namespace BoostPOW {
         update({});
         
         for (auto &thread : Workers) thread.join();
+    }
+    
+    void miner::mine(const Boost::puzzle &p, const Bitcoin::address &redeem, double fee_rate) {
+        Current = p;
+        RedeemAddress = redeem;
+        FeeRate = fee_rate;
+        
+        this->start_threads();
+        
+        update(work::puzzle(Current));
+    }
+    
+    void miner::solved(const work::solution &solution) {
+        // shouldn't happen
+        if (!solution.valid()) return;
+    
+        bool proof_valid;
+        {
+            std::unique_lock<std::mutex> lock(Mutex);
+            proof_valid = work::proof{Puzzle, solution}.valid();
+        }
+        
+        std::cout << "Solution found! valid? " << std::boolalpha << 
+            proof_valid << std::endl;
+        
+        auto value = Current.Value;
+        bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
+        Bitcoin::satoshi fee = BoostPOW::calculate_fee(Current.expected_size(), pay_script.size(), FeeRate);
+        
+        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
+        
+        redeemed(BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}}));
     }
     
 }
