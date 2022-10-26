@@ -1,23 +1,14 @@
 #ifndef BOOSTMINER_MINER
 #define BOOSTMINER_MINER
 
-#include <gigamonkey/boost/boost.hpp>
 #include <gigamonkey/schema/keysource.hpp>
 #include <random.hpp>
+#include <network.hpp>
 #include <thread>
 #include <condition_variable>
 #include <mutex>
 
 namespace BoostPOW {
-    
-    struct jobs : std::map<digest256, Boost::candidate> {
-        
-        digest256 add_script(const Boost::output_script &z);
-        void add_prevout(const digest256 &script_hash, const Boost::prevout &u);
-        
-        explicit operator json() const;
-        
-    };
     
     // select a puzzle optimally. 
     std::pair<digest256, Boost::candidate> select(random &, const jobs &, double minimum_profitability = 0);
@@ -36,31 +27,27 @@ namespace BoostPOW {
         double minimum_price_per_difficulty_sats, 
         double maximum_mining_difficulty = -1);
     
-    
     Bitcoin::satoshi calculate_fee(size_t inputs_size, size_t pay_script_size, double fee_rate);
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
     
-    struct channel_outer {
-        virtual void update(const work::puzzle &) = 0;
-    };
-
-    struct channel_inner {
+    struct miner : work::challenger {
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
         virtual work::puzzle latest() = 0;
         
         virtual void solved(const work::solution &) = 0;
+        virtual ~miner() {}
     };
 
-    void mining_thread(channel_inner *, random *, uint32);
+    void mining_thread(miner *, random *, uint32);
     
-    struct channel : channel_outer, channel_inner {
+    struct channel : virtual miner {
         std::mutex Mutex;
         std::condition_variable In;
         
         work::puzzle Puzzle;
         
-        void update(const work::puzzle &p) final override {
+        void pose(const work::puzzle &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
             Puzzle = p;
             In.notify_all();
@@ -78,18 +65,27 @@ namespace BoostPOW {
         
     };
     
-    struct miner : protected channel {
-        miner(
+    struct multithreaded : channel {
+        multithreaded(
             uint32 threads, uint64 random_seed) :
-            Threads{threads}, Seed{random_seed}, Workers{}, 
-            Current{}, RedeemAddress{}, FeeRate{} {}
-        ~miner();
+            Threads{threads}, Seed{random_seed}, Workers{} {
+            start_threads();
+        }
+        
+        virtual ~multithreaded();
         
         uint32 Threads; 
         uint64 Seed;
         
+    private:
         // start threads if not already. 
         void start_threads();
+        
+        std::vector<std::thread> Workers;
+    };
+    
+    struct redeemer : virtual miner {
+        redeemer() : Current{}, RedeemAddress{}, FeeRate{} {}
         
         void mine(const Boost::puzzle &, const Bitcoin::address &, double fee_rate);
         
@@ -104,11 +100,48 @@ namespace BoostPOW {
         std::vector<std::thread> Workers;
     };
     
+    struct manager : redeemer {
+        manager(
+            ptr<key_source> keys, 
+            ptr<address_source> addresses, 
+            casual_random random,  
+            double maximum_difficulty, 
+            double minimum_profitability, 
+            double fee_rate) : redeemer{}, 
+            Net{}, Keys{keys}, Addresses{addresses}, 
+            MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
+            FeeRate{fee_rate}, Random{random}, Jobs{}, Selected{}, Workers{} {}
+        
+        void run();
+        
+    private:
+        network Net;
+        ptr<key_source> Keys;
+        ptr<address_source> Addresses;
+        
+        casual_random Random;
+        
+        double MaxDifficulty;
+        double MinProfitability;
+        double FeeRate;
+        
+        jobs Jobs;
+        std::pair<digest256, Boost::candidate> Selected;
+        
+        std::vector<std::thread> Workers;
+        
+        void redeemed(const Bitcoin::transaction &redeem_tx) override;
+        
+        void update_jobs(const jobs &j);
+        void select_job();
+        
+    };
+    
     string write(const Bitcoin::txid &);
     string write(const Bitcoin::outpoint &);
-    json to_json(const Boost::candidate::prevout &);
-    json to_json(const Boost::candidate &);
-
+    JSON to_JSON(const Boost::candidate::prevout &);
+    JSON to_JSON(const Boost::candidate &);
+    
 }
 
 #endif

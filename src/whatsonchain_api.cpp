@@ -3,8 +3,8 @@
 bool whatsonchain::transactions::broadcast(const bytes &tx) {
     
     auto request = API.Rest.POST("/v1/bsv/main/tx/raw", 
-        {{networking::HTTP::header::content_type, "application/json"}}, 
-        json{{"tx_hex", encoding::hex::write(tx)}}.dump());
+        {{networking::HTTP::header::content_type, "application/JSON"}}, 
+        JSON{{"tx_hex", encoding::hex::write(tx)}}.dump());
     
     auto response = API(request);
     
@@ -19,9 +19,9 @@ bool whatsonchain::transactions::broadcast(const bytes &tx) {
     return true;
 }
         
-utxo::utxo() : Outpoint{}, Value{}, Height{} {}
+UTXO::UTXO() : Outpoint{}, Value{}, Height{} {}
 
-utxo::utxo(const json &item) : utxo{} {
+UTXO::UTXO(const JSON &item) : UTXO{} {
     
     digest256 tx_hash{string{"0x"} + string(item.at("tx_hash"))};
     if (!tx_hash.valid()) return;
@@ -32,43 +32,43 @@ utxo::utxo(const json &item) : utxo{} {
     
 }
 
-utxo::operator json() const {
+UTXO::operator JSON() const {
     std::stringstream ss;
     ss << Outpoint.Digest;
-    return json {
+    return JSON {
         {"tx_hash", ss.str().substr(9, 64)}, 
         {"tx_pos", Outpoint.Index}, 
         {"value", int64(Value)}, 
         {"height", Height}};
 }
 
-list<utxo> whatsonchain::addresses::get_unspent(const Bitcoin::address &addr) {
+list<UTXO> whatsonchain::addresses::get_unspent(const Bitcoin::address &addr) {
     std::stringstream ss;
     ss << "/v1/bsv/main/address/" << addr << "/unspent";
     auto response = API.GET(ss.str());
     
     if (response.Status != networking::HTTP::status::ok || 
-        response.Headers[networking::HTTP::header::content_type] != "application/json") throw response;
+        response.Headers[networking::HTTP::header::content_type] != "application/JSON") throw response;
     
-    json info = json::parse(response.Body);
+    JSON info = JSON::parse(response.Body);
     
     if (!info.is_array()) throw response;
     
-    list<utxo> utxos;
+    list<UTXO> UTXOs;
     
-    for (const json &item : info) {
+    for (const JSON &item : info) {
         
-        utxo u(item);
+        UTXO u(item);
         if (!u.valid()) throw response;
         
-        utxos = utxos << u;
+        UTXOs = UTXOs << u;
         
     }
     
-    return utxos;
+    return UTXOs;
 }
 
-list<utxo> whatsonchain::scripts::get_unspent(const digest256 &script_hash) {
+list<UTXO> whatsonchain::scripts::get_unspent(const digest256 &script_hash) {
     std::stringstream ss;
     ss << script_hash;
     
@@ -80,28 +80,28 @@ list<utxo> whatsonchain::scripts::get_unspent(const digest256 &script_hash) {
     if (response.Status != networking::HTTP::status::ok) 
         throw networking::HTTP::exception{request, response, string{"response status is not ok. body is: "} + response.Body};
     /*
-    if (response.Headers[networking::HTTP::header::content_type] != "application/json") 
-        throw networking::HTTP::exception{request, response, "response header content_type does not indicate application/json"};
+    if (response.Headers[networking::HTTP::header::content_type] != "application/JSON") 
+        throw networking::HTTP::exception{request, response, "response header content_type does not indicate application/JSON"};
     */
-    list<utxo> utxos;
+    list<UTXO> UTXOs;
     
     try {
         
-        json unspent_utxos_json = json::parse(response.Body);
+        JSON unspent_UTXOs_JSON = JSON::parse(response.Body);
         
-        for (const json &item : unspent_utxos_json) {
+        for (const JSON &item : unspent_UTXOs_JSON) {
             
-            utxo u(item);
+            UTXO u(item);
             if (!u.valid()) throw response;
             
-            utxos = utxos << u;
+            UTXOs = UTXOs << u;
             
         }
-    } catch (const json::exception &exception) {
-        throw networking::HTTP::exception{request, response, string{"problem reading json: "} + string{exception.what()}};
+    } catch (const JSON::exception &exception) {
+        throw networking::HTTP::exception{request, response, string{"problem reading JSON: "} + string{exception.what()}};
     }
     
-    return utxos;
+    return UTXOs;
 }
 
 list<Bitcoin::txid> whatsonchain::scripts::get_history(const digest256& script_hash) {
@@ -116,16 +116,16 @@ list<Bitcoin::txid> whatsonchain::scripts::get_history(const digest256& script_h
     if (response.Status != networking::HTTP::status::ok) 
         throw networking::HTTP::exception{request, response, "response status is not ok"};
     /*
-    if (response.Headers[networking::HTTP::header::content_type] != "application/json") 
-        throw networking::HTTP::exception{request, response, "response header content_type does not indicate application/json"};
+    if (response.Headers[networking::HTTP::header::content_type] != "application/JSON") 
+        throw networking::HTTP::exception{request, response, "response header content_type does not indicate application/JSON"};
     */
     list<Bitcoin::txid> txids;
     
     try {
         
-        json txids_json = json::parse(response.Body);
+        JSON txids_JSON = JSON::parse(response.Body);
         
-        for (const json &item : txids_json) {
+        for (const JSON &item : txids_JSON) {
             
             Bitcoin::txid txid{string{"0x"} + string(item.at("tx_hash"))};
             if (!txid.valid()) throw response;
@@ -133,8 +133,8 @@ list<Bitcoin::txid> whatsonchain::scripts::get_history(const digest256& script_h
             txids = txids << txid;
             
         }
-    } catch (const json::exception &exception) {
-        throw networking::HTTP::exception{request, response, string{"problem reading json: "} + string{exception.what()}};
+    } catch (const JSON::exception &exception) {
+        throw networking::HTTP::exception{request, response, string{"problem reading JSON: "} + string{exception.what()}};
     }
     
     return txids;

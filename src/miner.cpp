@@ -90,9 +90,9 @@ namespace BoostPOW {
 
     }
     
-    json solution_to_json(work::solution x) {
+    JSON solution_to_JSON(work::solution x) {
         
-        json share {
+        JSON share {
             {"timestamp", data::encoding::hex::write(x.Share.Timestamp.Value)},
             {"nonce", data::encoding::hex::write(x.Share.Nonce)},
             {"extra_nonce_2", data::encoding::hex::write(x.Share.ExtraNonce2) }
@@ -100,7 +100,7 @@ namespace BoostPOW {
         
         if (x.Share.Bits) share["bits"] = data::encoding::hex::write(*x.Share.Bits);
         
-        return json {
+        return JSON {
             {"share", share}, 
             {"extra_nonce_1", data::encoding::hex::write(x.ExtraNonce1)}
         };
@@ -149,8 +149,8 @@ namespace BoostPOW {
             
             std::string redeemhex = data::encoding::hex::write(redeem_script);
             
-            logger::log("job.complete.redeemscript", json {
-                {"solution", solution_to_json(solution)},
+            logger::log("job.complete.redeemscript", JSON {
+                {"solution", solution_to_JSON(solution)},
                 {"asm", Bitcoin::ASM(redeem_script)},
                 {"hex", redeemhex},
                 {"txid", write(redeem_txid)}
@@ -204,107 +204,78 @@ namespace BoostPOW {
         
     }
     
-    json to_json(const Boost::candidate::prevout &p) {
-        return json {
+    JSON to_JSON(const Boost::candidate::prevout &p) {
+        return JSON {
             {"output", write(static_cast<Bitcoin::outpoint>(p))}, 
             {"value", int64(p.Value)}};
     }
     
-    json to_json(const Boost::candidate &c) {
+    JSON to_JSON(const Boost::candidate &c) {
         
-        json::array_t arr;
+        JSON::array_t arr;
         auto prevouts = c.Prevouts;
         while (!data::empty(prevouts)) {
-            arr.push_back(to_json(prevouts.first()));
+            arr.push_back(to_JSON(prevouts.first()));
             prevouts = prevouts.rest();
         }
         
-        return json {
+        return JSON {
             {"script", typed_data::write(typed_data::mainnet, c.Script.write())}, 
             {"prevouts", arr}, 
             {"value", int64(c.Value)}};
     }
     
-    digest256 jobs::add_script(const Boost::output_script &z) {
-        auto script_hash = SHA2_256(z.write());
-        auto script_location = this->find(script_hash);
-        if (script_location == this->end()) (*this)[script_hash] = Boost::candidate{z, {}};
-        return script_hash;
-    }
-
-    void jobs::add_prevout(const digest256 &script_hash, const Boost::prevout &u) {
-        auto script_location = this->find(script_hash);
-        if (script_location != this->end()) {
-            script_location->second = script_location->second.add(u);
-        }
-    }
-
-    jobs::operator json() const {
-        json::object_t puz;
-        
-        for (const auto &j : *this) puz[write(j.first)] = to_json(j.second);
-        
-        return puz;
-    }
-    
-    void mining_thread(channel_inner *ch, random *r, uint32 thread_number) {
-        logger::log("begin thread", json(thread_number));
+    void mining_thread(miner *m, random *r, uint32 thread_number) {
+        logger::log("begin thread", JSON(thread_number));
         work::puzzle puzzle{};
         while (true) {
             
-            puzzle = ch->latest();
+            puzzle = m->latest();
             if (!puzzle.valid()) break;
             
             work::proof proof = solve(*r, puzzle, 10);
             if (proof.valid()) {
                 std::cout << "solution found in thread " << thread_number << std::endl;
-                ch->solved(proof.Solution);
+                m->solved(proof.Solution);
             }
             
-            puzzle = ch->latest();
+            puzzle = m->latest();
         }
         
         std::cout << "end thread " << thread_number << std::endl;
         delete r;
     }
     
-    void miner::start_threads() {
+    void multithreaded::start_threads() {
         if (Workers.size() != 0) return;
         std::cout << "starting " << Threads << " threads." << std::endl;
         for (int i = 1; i <= Threads; i++) 
             Workers.emplace_back(&mining_thread, 
-                &static_cast<channel_inner&>(*this), 
+                &static_cast<miner &>(*this), 
                 new casual_random{Seed + i}, i);
     }
     
-    miner::~miner() {
-        update({});
+    multithreaded::~multithreaded() {
+        pose({});
         
         for (auto &thread : Workers) thread.join();
     }
     
-    void miner::mine(const Boost::puzzle &p, const Bitcoin::address &redeem, double fee_rate) {
+    void redeemer::mine(const Boost::puzzle &p, const Bitcoin::address &redeem, double fee_rate) {
         Current = p;
         RedeemAddress = redeem;
         FeeRate = fee_rate;
         
-        this->start_threads();
-        
-        update(work::puzzle(Current));
+        pose(work::puzzle(Current));
     }
     
-    void miner::solved(const work::solution &solution) {
+    void redeemer::solved(const work::solution &solution) {
         // shouldn't happen
         if (!solution.valid()) return;
     
-        bool proof_valid;
-        {
-            std::unique_lock<std::mutex> lock(Mutex);
-            proof_valid = work::proof{Puzzle, solution}.valid();
-        }
+        bool proof_valid = work::proof{this->latest(), solution}.valid();
         
-        std::cout << "Solution found! valid? " << std::boolalpha << 
-            proof_valid << std::endl;
+        std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
         
         auto value = Current.Value;
         bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
@@ -313,6 +284,83 @@ namespace BoostPOW {
         if (fee > value) throw string{"Cannot pay tx fee with boost output"};
         
         redeemed(BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}}));
+    }
+    
+    void manager::update_jobs(const BoostPOW::jobs &j) {
+        Jobs = j;
+        uint32 count_jobs = Jobs.size();
+        if (count_jobs == 0) return;
+        
+        // remove jobs that are too difficult. 
+        if (MaxDifficulty > 0) {
+            for (auto it = Jobs.cbegin(); it != Jobs.cend();) 
+                if (it->second.difficulty() > MaxDifficulty) 
+                    it = Jobs.erase(it);
+                else ++it;
+            
+            std::cout << (count_jobs - Jobs.size()) << " jobs removed due to high difficulty." << std::endl;
+        }
+        
+        uint32 unprofitable_jobs = 0;
+        for (auto it = Jobs.cbegin(); it != Jobs.cend(); it++) 
+            if (it->second.profitability() < MinProfitability) 
+                unprofitable_jobs++;
+        
+        uint32 viable_jobs = Jobs.size() - unprofitable_jobs;
+        
+        std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << 
+        viable_jobs << " jobs remaining " << std::endl;
+        
+        if (viable_jobs == 0) return;
+        
+        // select a new job if now job has been selected. 
+        if (Selected.first == digest256{}) return select_job();
+        
+        auto it = j.find(Selected.first);
+        
+        // job has been invalidated. 
+        if (it == j.end() || it->second.Value != Selected.second.Value) select_job();
+    }
+
+    void manager::select_job() {
+        Selected = select(Random, Jobs, MinProfitability);
+        
+        logger::log("job.selected", JSON {
+            {"script_hash", BoostPOW::write(Selected.first)},
+            {"difficulty", Selected.second.difficulty()},
+            {"profitability", Selected.second.profitability()},
+            {"job", BoostPOW::to_JSON(Selected.second)}
+        });
+        
+        this->mine(Boost::puzzle{Selected.second, Keys->next()}, Addresses->next(), .5);
+        
+    }
+
+    void manager::run() {
+        
+        while(true) {
+            std::cout << "calling API" << std::endl;
+            try {
+                update_jobs(Net.jobs(100));
+            } catch (const networking::HTTP::exception &exception) {
+                std::cout << "API problem: " << exception.what() << std::endl;
+            }
+            
+            std::this_thread::sleep_for (std::chrono::seconds(900));
+            
+        }
+    }
+
+    void manager::redeemed(const Bitcoin::transaction &redeem_tx) {
+        if (!redeem_tx.valid()) {
+            select_job();
+            return;
+        }
+        
+        Jobs.erase(Jobs.find(Selected.first));
+        select_job();
+        
+        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
     }
     
 }
