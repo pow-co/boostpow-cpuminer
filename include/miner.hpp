@@ -30,12 +30,11 @@ namespace BoostPOW {
     Bitcoin::satoshi calculate_fee(size_t inputs_size, size_t pay_script_size, double fee_rate);
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
     
-    struct miner : work::challenger {
+    struct miner : virtual work::challenger {
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
         virtual work::puzzle latest() = 0;
         
-        virtual void solved(const work::solution &) = 0;
         virtual ~miner() {}
     };
 

@@ -9,6 +9,7 @@
 #include <gigamonkey/redeem.hpp>
 
 using namespace Gigamonkey;
+namespace po = boost::program_options;
 
 Boost::output_script read_output_script(int arg_count, char** arg_values) {
     
@@ -156,7 +157,6 @@ protected:
 };
 
 int command_redeem(int arg_count, char** arg_values) {
-    namespace po = boost::program_options;
     
     string script_string;
     int64  value;
@@ -186,7 +186,7 @@ int command_redeem(int arg_count, char** arg_values) {
         "Your address where you will put the redeemed sats. "
         "If not provided, addresses will be generated from the key.")
     ("threads", po::value<uint32>(&threads)->default_value(1), 
-        "Number of threads to mine with. Default is 1. (does not work yet)")
+        "Number of threads to mine with. Default is 1.")
     ("min_profitability", po::value<double>(&min_profitability)->default_value(0), 
         "Boost jobs with less than this sats/difficulty will be ignored.")
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
@@ -296,7 +296,6 @@ struct manager final : BoostPOW::manager, BoostPOW::multithreaded {
 };
 
 int command_mine(int arg_count, char** arg_values) {
-    namespace po = boost::program_options;
     
     string key_string;
     string address_string;
@@ -314,7 +313,7 @@ int command_mine(int arg_count, char** arg_values) {
         "Your address where you will put the redeemed sats. "
         "If not provided, addresses will be generated from the key.")
     ("threads", po::value<uint32>(&threads)->default_value(1), 
-        "Number of threads to mine with. Default is 1. (does not work yet)")
+        "Number of threads to mine with. Default is 1.")
     ("min_profitability", po::value<double>(&min_profitability)->default_value(0), 
         "Boost jobs with less than this sats/difficulty will be ignored.")
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
