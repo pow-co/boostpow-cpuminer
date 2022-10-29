@@ -14,6 +14,13 @@ bool BoostPOW::network::broadcast(const bytes &tx) {
     bool broadcast_pow_co;
     
     try {
+        broadcast_pow_co = PowCo.broadcast(tx);
+    } catch (networking::HTTP::exception ex) {
+        std::cout << "exception caught broadcasting powco: " << ex.what() << std::endl;
+        broadcast_pow_co = false;
+    }
+    
+    try {
         broadcast_whatsonchain = WhatsOnChain.transaction().broadcast(tx); 
     } catch (networking::HTTP::exception ex) {
         std::cout << "exception caught broadcasting whatsonchain." << ex.what() << std::endl;
@@ -25,13 +32,6 @@ bool BoostPOW::network::broadcast(const bytes &tx) {
     } catch (networking::HTTP::exception ex) {
         std::cout << "exception caught broadcasting gorilla: " << ex.what() << "; response code = " << ex.Response.Status << std::endl;
         broadcast_gorilla = false;
-    }
-    
-    try {
-        broadcast_pow_co = PowCo.broadcast(tx);
-    } catch (networking::HTTP::exception ex) {
-        std::cout << "exception caught broadcasting powco: " << ex.what() << std::endl;
-        broadcast_pow_co = false;
     }
     
     std::cout << "broadcast results: Whatsonchain = " << std::boolalpha << 
