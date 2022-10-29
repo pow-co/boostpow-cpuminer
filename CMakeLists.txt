@@ -7,33 +7,33 @@ set(CMAKE_CXX_COMPILER g++-10)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(TARGETS)
 
-add_executable(BoostMiner 
-    src/boost_miner.cpp 
-    src/logger.cpp 
+add_library(bm STATIC
     src/whatsonchain_api.cpp 
     src/pow_co_api.cpp 
     src/miner.cpp 
-    src/network.cpp)
+    src/network.cpp
+    src/logger.cpp 
+    src/jobs.cpp)
+    
+target_include_directories(bm PUBLIC include)
+target_link_libraries(bm PUBLIC CONAN_PKG::gigamonkey)
+target_compile_features(bm PUBLIC cxx_std_20)
+set_target_properties(bm PROPERTIES CXX_EXTENSIONS OFF)
 
-target_link_libraries(BoostMiner PUBLIC CONAN_PKG::gigamonkey)
+add_executable(BoostMiner src/boost_miner.cpp)
+
+target_link_libraries(BoostMiner PUBLIC bm)
 target_include_directories(BoostMiner PUBLIC include)
 
-add_executable(CosmosWallet 
-    src/cosmos.cpp 
-    src/wallet.cpp 
-    src/logger.cpp
-    src/whatsonchain_api.cpp 
-    src/pow_co_api.cpp 
-    src/miner.cpp 
-    src/network.cpp)
-
-target_link_libraries(CosmosWallet PUBLIC CONAN_PKG::gigamonkey)
-target_include_directories(CosmosWallet PUBLIC include)
-
-# Set C++ version
 target_compile_features(BoostMiner PUBLIC cxx_std_20)
 set_target_properties(BoostMiner PROPERTIES CXX_EXTENSIONS OFF)
 
+add_executable(CosmosWallet 
+    src/cosmos.cpp 
+    src/wallet.cpp)
+
+target_link_libraries(CosmosWallet PUBLIC bm)
+target_include_directories(CosmosWallet PUBLIC include)
+
 target_compile_features(CosmosWallet PUBLIC cxx_std_20)
 set_target_properties(CosmosWallet PROPERTIES CXX_EXTENSIONS OFF)
-
