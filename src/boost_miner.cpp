@@ -11,9 +11,50 @@
 using namespace Gigamonkey;
 namespace po = boost::program_options;
 
-Boost::output_script read_output_script(int arg_count, char** arg_values) {
+int command_spend(int arg_count, char** arg_values) {
     
-    string content_hash_hex{arg_values[0]};
+    string content_hash_hex;
+    double difficulty_input;
+    string additional_data;
+    string topic;
+    uint32 script_version;
+    string miner_address_string;
+    
+    po::options_description options_spend("options for command \"spend\"");
+    
+    options_spend.add_options()
+    ("content", po::value<string>(&content_hash_hex), 
+        "content to boost. Hexidecimal (with 0x) for a txid, hex for any other hash.")
+    ("difficulty", po::value<double>(&difficulty_input), 
+        "difficulty to boost")
+    ("data", po::value<string>(&additional_data)->default_value(string{}), 
+        "additional data.")
+    ("topic", po::value<string>(&topic)->default_value(string{}), 
+        "topic. (max 20 characters)")
+    ("script_version", po::value<uint32>(&script_version)->default_value(1), 
+        "1 or 2")
+    ("miner_address", po::value<string>(&miner_address_string)->default_value(string{}), 
+        "if provided, script is boost contract. Otherwise it is boost bounty.");
+    
+    po::positional_options_description arguments_spend;
+    arguments_spend.add("content", 1);
+    arguments_spend.add("difficulty", 2);
+    arguments_spend.add("topic", 3);
+    arguments_spend.add("data", 4);
+    arguments_spend.add("miner_address", 5);
+    
+    po::variables_map options_map;
+    try {
+        po::store(po::command_line_parser(arg_count, arg_values).
+          options(options_spend).positional(arguments_spend).run(), options_map);
+        po::notify(options_map);
+    } catch (const po::error &ex) {
+        std::cout << "Input format error: " << ex.what() << std::endl;
+        std::cout << options_spend << std::endl;
+        return 1;
+    }
+    
+    if (script_version < 1 || script_version > 2) throw string{"invalid script version"};
     
     // Content is what is to be boosted. Could be a hash or
     // could be text that's 32 bytes or less. There is a
@@ -31,28 +72,21 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     digest256 content{content_hash_hex};
     if (!content.valid()) throw (string{"could not read content: "} + content_hash_hex);
     
-    double diff = 0;
-    string difficulty_input{arg_values[1]};
-    std::stringstream diff_stream{difficulty_input};
-    diff_stream >> diff;
-    
     // difficulty is a unit that is inversely proportional to 
     // target. One difficulty is proportional to 2^32
     // expected hash operations. 
     
     // a difficulty of 1/1000 should be easy to do on a cpu quickly. 
     // Difficulty 1 is the difficulty of the genesis block. 
-    work::compact target{work::difficulty{diff}};
-    if (!target.valid()) throw (std::string{"could not read difficulty: "} + difficulty_input);
+    work::compact target{work::difficulty{difficulty_input}};
+    if (!target.valid()) throw (std::string{"could not read difficulty "});
     
     // Tag/topic does not need to be anything. 
-    string topic{arg_values[2]};
     if (topic.size() > 20) throw string{"topic is too big: must be 20 or fewer bytes"};
     
     // additional data does not need to be anything but it 
     // can be used to provide information about a boost or
     // to add a comment. 
-    string additional_data{arg_values[3]};
     
     // Category has no particular meaning. We could use it for
     // something like magic number if we wanted to imitate 21e8. 
@@ -68,7 +102,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     // This has to do with whether we use boost v2 which
     // incorporates bip320 which is necessary for ASICBoost. 
     // This is not necessary for CPU mining. 
-    bool use_general_purpose_bits = false;
+    bool use_general_purpose_bits = script_version == 2;
     
     Boost::output_script output_script;
     bytes output_script_bytes;
@@ -79,8 +113,10 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
     
     // If you use a contract script, then you are the only
     // one who can mine that boost output. 
+    
+    std::cout << "topic: " << topic << "; data: " << additional_data << "; miner address: " << miner_address_string << std::endl;
 
-    if (arg_count == 4) {
+    if (miner_address_string == "") {
         output_script = Boost::output_script::bounty(
             category, 
             content, 
@@ -93,7 +129,7 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
 
         logger::log("job.create", JSON {
             {"target", target},
-            {"difficulty", diff},
+            {"difficulty", difficulty_input},
             {"content", content_hash_hex},
             {"script", {
                 {"asm", Bitcoin::ASM(output_script_bytes)},
@@ -101,8 +137,8 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
             }}
         });
     } else {
-        Bitcoin::address miner_address{arg_values[4]};
-        if (!miner_address.valid()) throw (std::string{"could not read miner address: "} + string{arg_values[4]});
+        Bitcoin::address miner_address{miner_address_string};
+        if (!miner_address.valid()) throw (std::string{"could not read miner address: "} + string{miner_address_string});
         
         output_script = Boost::output_script::contract(
             category, 
@@ -117,22 +153,15 @@ Boost::output_script read_output_script(int arg_count, char** arg_values) {
 
         logger::log("job.create", JSON {
             {"target", target},
-            {"difficulty", diff},
+            {"difficulty", difficulty_input},
             {"content", content_hash_hex},
-            {"miner", arg_values[4]},
+            {"miner", miner_address_string},
             {"script", {
                 {"asm", Bitcoin::ASM(output_script_bytes)},
                 {"hex", output_script_bytes}
             }}
         });
     }
-    
-    return output_script;
-}
-
-int command_spend(int arg_count, char** arg_values) {
-    if (arg_count < 4 || arg_count > 5) throw std::string{"invalid number of arguments; should be 4 or 5"};
-    auto output_script = read_output_script(arg_count, arg_values);
 
     std::cout << "To spend to this job, paste into electrum-sv: \"" << 
         typed_data::write(typed_data::mainnet, output_script.write()) << "\"" << std::endl;
@@ -145,14 +174,35 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
         uint32 threads, uint64 random_seed) : 
         BoostPOW::redeemer{}, 
         BoostPOW::multithreaded{threads, random_seed}, 
-        Net{} {}
-    
-protected:
+        Net{}, Solved{false} {
+        this->start_threads();
+    }
     BoostPOW::network Net;
     
+    bool Solved;
+    
+    std::mutex Mutex;
+    std::condition_variable Out;
+    
+    void wait_for_solution() {
+        std::unique_lock<std::mutex> lock(Mutex);
+        if (Solved) return;
+        Out.wait(lock);
+    }
+    
+protected:
+    
     void redeemed(const Bitcoin::transaction &redeem_tx) override {
+        std::unique_lock<std::mutex> lock(Mutex);
         if (!redeem_tx.valid()) std::cout << "invalid transaction!" << std::endl;
+    
+        logger::log("job.complete.transaction", JSON {
+            {"txid", BoostPOW::write(redeem_tx.id())}, 
+            {"txhex", encoding::hex::write(bytes(redeem_tx))}
+        });
+        
         if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+        Out.notify_one();
     }
 };
 
@@ -192,7 +242,7 @@ int command_redeem(int arg_count, char** arg_values) {
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
         "Boost jobs above this difficulty will be ignored")
     ("fee_rate", po::value<double>(&fee_rate)->default_value(.5), 
-        "Boost jobs above this difficulty will be ignored");
+        "The final transaction will have this fee per byte.");
     
     po::positional_options_description arguments_redeem;
     arguments_redeem.add("script", 1);
@@ -213,8 +263,6 @@ int command_redeem(int arg_count, char** arg_values) {
         return 1;
     }
     
-    if (threads == 0) throw string{"Need at least 1 thread."};
-    if (threads > 1) throw string{"Multiple threads not supported."};
     if (fee_rate < 0) throw string{"Fee rate must be positive"};
     
     bytes *script;
@@ -241,6 +289,7 @@ int command_redeem(int arg_count, char** arg_values) {
 
     logger::log("job.mine", JSON {
       {"script", script_string},
+      {"difficulty", double(boost_script.Target.difficulty())},
       {"value", value},
       {"txid", txid_string},
       {"vout", index},
@@ -248,36 +297,18 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    BoostPOW::casual_random random;
+    redeemer r{threads, std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337};
     
-    Bitcoin::transaction redeem_tx = BoostPOW::mine(
-        random, 
-        Boost::puzzle{
+    r.mine(Boost::puzzle{
             Boost::candidate{
                 boost_script, 
                 {Boost::candidate::prevout{
                     Bitcoin::outpoint{txid, index}, 
                     Bitcoin::satoshi{value}}}}, 
             key}, 
-        address, 
-        86400, // one day. 
-        min_profitability, 
-        max_difficulty, 
-        fee_rate);
+        address, fee_rate);
     
-    bytes redeem_tx_raw = bytes(redeem_tx);
-    std::string redeem_txhex = data::encoding::hex::write(redeem_tx_raw);
-    
-    auto redeem_txid = Bitcoin::Hash256(redeem_tx_raw);
-    std::stringstream txid_stream;
-    txid_stream << redeem_txid;
-    
-    logger::log("job.complete.transaction", JSON {
-      {"txid", txid_stream.str()}, 
-      {"txhex", redeem_txhex}
-    });
-    
-    BoostPOW::network{}.broadcast(redeem_tx_raw);
+    r.wait_for_solution();
     
     return 0;
 }
@@ -291,7 +322,9 @@ struct manager final : BoostPOW::manager, BoostPOW::multithreaded {
         double minimum_profitability, 
         double fee_rate) : 
         BoostPOW::manager{keys, addresses, BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability, fee_rate}, 
-        BoostPOW::multithreaded{threads, random_seed} {}
+        BoostPOW::multithreaded{threads, random_seed} {
+        start_threads();
+    }
     
 };
 
@@ -384,9 +417,9 @@ int help() {
         "\nFor function \"spend\", remaining inputs should be "
         "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
         "\n\tdifficulty -- a positive number."
-        "\n\ttopic      -- string max 20 bytes."
-        "\n\tadd. data  -- string, any size."
-        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
+        "\n\ttopic      -- (optional) string max 20 bytes."
+        "\n\tadd. data  -- (optional) string, any size."
+        "\n\taddress    -- (optional) If provided, a boost contract output will be created. Otherwise it will be boost bounty."
         "\nFor function \"redeem\", remaining inputs should be "
         "\n\tscript     -- boost output script, hex or bip 276."
         "\n\tvalue      -- value in satoshis of the output."
@@ -415,8 +448,8 @@ int main(int arg_count, char** arg_values) {
     
     try {
         
-        if (function == "spend") return command_spend(arg_count - 2, arg_values + 2);
-        if (function == "redeem") return command_redeem(arg_count - 2, arg_values + 2);
+        if (function == "spend") return command_spend(arg_count - 1, arg_values + 1);
+        if (function == "redeem") return command_redeem(arg_count - 1, arg_values + 1);
         if (function == "mine") return command_mine(arg_count - 1, arg_values + 1);
         if (function == "help") return help();
         help();

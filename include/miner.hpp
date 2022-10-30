@@ -45,10 +45,13 @@ namespace BoostPOW {
         std::condition_variable In;
         
         work::puzzle Puzzle;
+        bool Set;
         
         void pose(const work::puzzle &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
             Puzzle = p;
+            Set = true;
+            std::cout << "set puzzle " << Puzzle << std::endl;
             In.notify_all();
         }
         
@@ -56,30 +59,28 @@ namespace BoostPOW {
         // pointer will be null if the thread is supposed to stop. 
         work::puzzle latest() final override {
             std::unique_lock<std::mutex> lock(Mutex);
-            if (!Puzzle.valid()) In.wait(lock);
+            if (!Set) In.wait(lock);
             return Puzzle;
         }
         
-        channel() : Mutex{}, In{}, Puzzle{} {}
+        channel() : Mutex{}, In{}, Puzzle{}, Set{false} {}
         
     };
     
     struct multithreaded : channel {
         multithreaded(
             uint32 threads, uint64 random_seed) :
-            Threads{threads}, Seed{random_seed}, Workers{} {
-            start_threads();
-        }
+            Threads{threads}, Seed{random_seed}, Workers{} {}
         
         virtual ~multithreaded();
         
         uint32 Threads; 
         uint64 Seed;
         
-    private:
         // start threads if not already. 
         void start_threads();
         
+    private:
         std::vector<std::thread> Workers;
     };
     
