@@ -18,8 +18,6 @@ namespace BoostPOW {
         
         uint256 target = p.Candidate.Target.expand();
         if (target == 0) return {};
-        //std::cout << " working " << p << std::endl;
-        //std::cout << " with target " << target << std::endl;
         
         N total_hashes{0};
         N nonce_increment{"0x0100000000"};
@@ -231,18 +229,18 @@ namespace BoostPOW {
         while (true) {
             
             puzzle = m->latest();
-            if (!puzzle.valid()) break;
             
+            if (!puzzle.valid()) break;
             work::proof proof = solve(*r, puzzle, 10);
             if (proof.valid()) {
-                std::cout << "solution found in thread " << thread_number << std::endl;
+                logger::log("solution found in thread", JSON(thread_number));
                 m->solved(proof.Solution);
             }
             
             puzzle = m->latest();
         }
         
-        std::cout << "end thread " << thread_number << std::endl;
+        logger::log("end thread", JSON(thread_number));
         delete r;
     }
     
