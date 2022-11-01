@@ -3,6 +3,7 @@
 #include <sv/uint256.h>
 #include <miner.hpp>
 #include <logger.hpp>
+#include <math.h>
 
 namespace BoostPOW {
     using uint256 = Gigamonkey::uint256;
@@ -73,10 +74,9 @@ namespace BoostPOW {
         return {};
     }
     
-    Bitcoin::satoshi calculate_fee(
+    uint64 estimate_size(
         size_t inputs_size, 
-        size_t pay_script_size, 
-        double fee_rate) {
+        size_t pay_script_size) {
         
         return inputs_size                              // inputs
             + 4                                         // tx version
@@ -176,7 +176,7 @@ namespace BoostPOW {
         std::cout << "mining on script " << puzzle.id() << std::endl;
         if (!puzzle.valid()) throw string{"Boost puzzle is not valid"};
         
-        Bitcoin::satoshi value = puzzle.Value;
+        Bitcoin::satoshi value = puzzle.value();
         
         std::cout << "difficulty is " << puzzle.difficulty() << "." << std::endl;
         std::cout << "price per difficulty is " << puzzle.profitability() << "." << std::endl;
@@ -194,7 +194,7 @@ namespace BoostPOW {
         
         bytes pay_script = pay_to_address::script(address.Digest);
         
-        Bitcoin::satoshi fee = calculate_fee(puzzle.expected_size(), pay_script.size(), fee_rate);
+        Bitcoin::satoshi fee{int64(ceil(fee_rate * estimate_size(puzzle.expected_size(), pay_script.size())))};
         
         if (fee > value) throw string{"Cannot pay tx fee with boost output"};
         
@@ -220,24 +220,28 @@ namespace BoostPOW {
         return JSON {
             {"script", typed_data::write(typed_data::mainnet, c.Script.write())}, 
             {"prevouts", arr}, 
-            {"value", int64(c.Value)}};
+            {"value", int64(c.value())}};
     }
     
     void mining_thread(miner *m, random *r, uint32 thread_number) {
         logger::log("begin thread", JSON(thread_number));
-        work::puzzle puzzle{};
-        while (true) {
-            
-            puzzle = m->latest();
-            
-            if (!puzzle.valid()) break;
-            work::proof proof = solve(*r, puzzle, 10);
-            if (proof.valid()) {
-                logger::log("solution found in thread", JSON(thread_number));
-                m->solved(proof.Solution);
+        try {
+            work::puzzle puzzle{};
+            while (true) {
+                
+                puzzle = m->latest();
+                
+                if (!puzzle.valid()) break;
+                work::proof proof = solve(*r, puzzle, 10);
+                if (proof.valid()) {
+                    logger::log("solution found in thread", JSON(thread_number));
+                    m->solved(proof.Solution);
+                }
+                
+                puzzle = m->latest();
             }
-            
-            puzzle = m->latest();
+        } catch (const string &x) {
+            std::cout << "Error " << x << std::endl;
         }
         
         logger::log("end thread", JSON(thread_number));
@@ -263,7 +267,7 @@ namespace BoostPOW {
         Current = p;
         RedeemAddress = redeem;
         FeeRate = fee_rate;
-        
+        std::cout << " Puzzle posed: " << to_JSON(p) << std::endl;
         pose(work::puzzle(Current));
     }
     
@@ -271,20 +275,32 @@ namespace BoostPOW {
         // shouldn't happen
         if (!solution.valid()) return;
     
-        bool proof_valid = work::proof{this->latest(), solution}.valid();
+        Bitcoin::transaction redeem_tx;
+        {
+            std::unique_lock<std::mutex> lock(Mutex);
+            bool proof_valid = work::proof{this->latest(), solution}.valid();
+            
+            std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
+            
+            auto value = Current.value();
+            bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
+            Bitcoin::satoshi fee{int64(ceil(FeeRate * estimate_size(Current.expected_size(), pay_script.size())))};
+            
+            std::cout << "value: " << value << "; fee rate = " << FeeRate << " proposed fee " << fee << std::endl;
+            
+            if (fee > value) throw string{"Cannot pay tx fee with boost output"};
+            
+            redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
+            
+            std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
+                ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
+        }
         
-        std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
-        
-        auto value = Current.Value;
-        bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
-        Bitcoin::satoshi fee = BoostPOW::calculate_fee(Current.expected_size(), pay_script.size(), FeeRate);
-        
-        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
-        
-        redeemed(BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}}));
+        redeemed(redeem_tx);
     }
     
     void manager::update_jobs(const BoostPOW::jobs &j) {
+        
         Jobs = j;
         uint32 count_jobs = Jobs.size();
         if (count_jobs == 0) return;
@@ -317,10 +333,11 @@ namespace BoostPOW {
         auto it = j.find(Selected.first);
         
         // job has been invalidated. 
-        if (it == j.end() || it->second.Value != Selected.second.Value) select_job();
+        if (it == j.end() || it->second.Prevouts != Selected.second.Prevouts) select_job();
     }
 
     void manager::select_job() {
+        
         Selected = select(Random, Jobs, MinProfitability);
         
         logger::log("job.selected", JSON {

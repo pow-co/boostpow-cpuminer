@@ -27,7 +27,7 @@ namespace BoostPOW {
         double minimum_price_per_difficulty_sats, 
         double maximum_mining_difficulty = -1);
     
-    Bitcoin::satoshi calculate_fee(size_t inputs_size, size_t pay_script_size, double fee_rate);
+    uint64 estimate_size(size_t inputs_size, size_t pay_script_size);
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
     
     struct miner : virtual work::challenger {
@@ -51,7 +51,7 @@ namespace BoostPOW {
             std::unique_lock<std::mutex> lock(Mutex);
             Puzzle = p;
             Set = true;
-            std::cout << "set puzzle " << Puzzle << std::endl;
+            
             In.notify_all();
         }
         
@@ -85,11 +85,13 @@ namespace BoostPOW {
     };
     
     struct redeemer : virtual miner {
-        redeemer() : Current{}, RedeemAddress{}, FeeRate{} {}
+        redeemer() : Mutex{}, Current{}, RedeemAddress{}, FeeRate{} {}
         
         void mine(const Boost::puzzle &, const Bitcoin::address &, double fee_rate);
         
     private:
+        std::mutex Mutex;
+        
         Boost::puzzle Current;
         Bitcoin::address RedeemAddress;
         double FeeRate;
@@ -102,20 +104,21 @@ namespace BoostPOW {
     
     struct manager : redeemer {
         manager(
+            network &net, 
             ptr<key_source> keys, 
             ptr<address_source> addresses, 
             casual_random random,  
             double maximum_difficulty, 
             double minimum_profitability, 
             double fee_rate) : redeemer{}, 
-            Net{}, Keys{keys}, Addresses{addresses}, 
+            Net{net}, Keys{keys}, Addresses{addresses}, 
             MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
             FeeRate{fee_rate}, Random{random}, Jobs{}, Selected{}, Workers{} {}
         
         void run();
         
     private:
-        network Net;
+        network &Net;
         ptr<key_source> Keys;
         ptr<address_source> Addresses;
         

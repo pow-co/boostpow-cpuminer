@@ -28,7 +28,9 @@ bool BoostPOW::network::broadcast(const bytes &tx) {
     }
     
     try {
-        broadcast_gorilla = Gorilla.submit_transaction({tx}).ReturnResult == BitcoinAssociation::MAPI::success;
+        auto broadcast_result = Gorilla.submit_transaction({tx});
+        broadcast_gorilla = broadcast_result.ReturnResult == BitcoinAssociation::MAPI::success;
+        if (!broadcast_gorilla) std::cout << "Gorilla broadcast description: " << broadcast_result.ResultDescription << std::endl; 
     } catch (networking::HTTP::exception ex) {
         std::cout << "exception caught broadcasting gorilla: " << ex.what() << "; response code = " << ex.Response.Status << std::endl;
         broadcast_gorilla = false;
@@ -55,10 +57,9 @@ bytes BoostPOW::network::get_transaction(const Bitcoin::txid &txid) {
 }
 
 BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
-    
+    std::cout << "calling jobs" << std::endl;
     const list<Boost::prevout> jobs_api_call{PowCo.jobs()};
-    
-    //std::cout << "read " << jobs_api_call.size() << " jobs from pow.co/api/v1/jobs/" << std::endl;
+    std::cout << "got jobs" << std::endl;
     
     BoostPOW::jobs Jobs{};
     uint32 count_closed_jobs = 0;
@@ -152,7 +153,8 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
         {"jobs_not_already_redeemed", count_open_jobs}, 
         {"jobs_already_redeemed", count_closed_jobs}, 
         {"jobs_with_multiple_outputs", count_jobs_with_multiple_outputs}, 
-        {"redemptions", redemptions}
+        {"redemptions", redemptions}, 
+        {"valid_jobs", JSON(Jobs)}
     });
     
     return Jobs;

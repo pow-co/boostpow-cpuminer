@@ -5,7 +5,7 @@ namespace BoostPOW {
     digest256 jobs::add_script(const Boost::output_script &z) {
         auto script_hash = SHA2_256(z.write());
         auto script_location = this->find(script_hash);
-        if (script_location == this->end()) (*this)[script_hash] = Boost::candidate{z, {}};
+        if (script_location == this->end()) (*this)[script_hash] = Boost::candidate{z};
         return script_hash;
     }
 

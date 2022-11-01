@@ -264,6 +264,8 @@ int command_redeem(int arg_count, char** arg_values) {
     }
     
     if (fee_rate < 0) throw string{"Fee rate must be positive"};
+    std::cout << "value is " << value << std::endl;
+    if (value < 0) throw string{"Value must be positive: "};
     
     bytes *script;
     ptr<bytes> script_from_hex = encoding::hex::read(script_string);
@@ -301,10 +303,12 @@ int command_redeem(int arg_count, char** arg_values) {
     
     r.mine(Boost::puzzle{
             Boost::candidate{
-                boost_script, 
-                {Boost::candidate::prevout{
-                    Bitcoin::outpoint{txid, index}, 
-                    Bitcoin::satoshi{value}}}}, 
+                {Boost::prevout{
+                    Bitcoin::outpoint {txid, index}, 
+                    Boost::output {
+                        Bitcoin::satoshi{value}, 
+                        boost_script}
+                }}}, 
             key}, 
         address, fee_rate);
     
@@ -315,13 +319,15 @@ int command_redeem(int arg_count, char** arg_values) {
 
 struct manager final : BoostPOW::manager, BoostPOW::multithreaded {
     manager(
+        BoostPOW::network &net, 
         ptr<key_source> keys, 
         ptr<address_source> addresses, 
         uint32 threads, uint64 random_seed, 
         double maximum_difficulty, 
         double minimum_profitability, 
         double fee_rate) : 
-        BoostPOW::manager{keys, addresses, BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability, fee_rate}, 
+        BoostPOW::manager{net, keys, addresses, 
+            BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability, fee_rate}, 
         BoostPOW::multithreaded{threads, random_seed} {
         start_threads();
     }
@@ -401,7 +407,14 @@ int command_mine(int arg_count, char** arg_values) {
         else throw string{"could not read signing key"};
     }
     
-    manager{signing_keys, receiving_addresses, threads, 
+    BoostPOW::network Net{};
+    
+    auto z = Net.Gorilla.get_fee_quote();
+    auto j = JSON(z);
+    
+    std::cout << "Fee quote is " << j << std::endl;
+    
+    manager{Net, signing_keys, receiving_addresses, threads, 
         std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, 
         max_difficulty, min_profitability, fee_rate}.run();
     
