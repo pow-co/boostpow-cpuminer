@@ -85,58 +85,70 @@ namespace BoostPOW {
     };
     
     struct redeemer : virtual miner {
-        redeemer() : Mutex{}, Current{}, RedeemAddress{}, FeeRate{} {}
+        redeemer(network &net, fees &f) : 
+            miner{}, Mutex{}, Out{}, Current{}, RedeemAddress{}, 
+            Net{net}, Fees{f}, Solved{false} {}
         
-        void mine(const Boost::puzzle &, const Bitcoin::address &, double fee_rate);
+        void mine(const Boost::puzzle &p, const Bitcoin::address &redeem);
         
-    private:
+        void wait_for_solution() {
+            std::unique_lock<std::mutex> lock(Mutex);
+            if (Solved) return;
+            Out.wait(lock);
+        }
+        
+    protected:
         std::mutex Mutex;
+        std::condition_variable Out;
         
         Boost::puzzle Current;
         Bitcoin::address RedeemAddress;
-        double FeeRate;
         
-        virtual void redeemed(const Bitcoin::transaction &) = 0;
+        network &Net;
+        fees &Fees;
+        
+        bool Solved;
+        
         void solved(const work::solution &) override;
-        
-        std::vector<std::thread> Workers;
     };
     
-    struct manager : redeemer {
+    struct manager : virtual miner {
         manager(
             network &net, 
-            ptr<key_source> keys, 
-            ptr<address_source> addresses, 
+            fees &f,
+            key_source &keys, 
+            address_source &addresses, 
             casual_random random,  
             double maximum_difficulty, 
-            double minimum_profitability, 
-            double fee_rate) : redeemer{}, 
-            Net{net}, Keys{keys}, Addresses{addresses}, 
+            double minimum_profitability) : miner{}, Mutex{}, Current{}, 
+            Net{net}, Fees{f}, 
+            Keys{keys}, Addresses{addresses}, 
             MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
-            FeeRate{fee_rate}, Random{random}, Jobs{}, Selected{}, Workers{} {}
+            Random{random}, Jobs{}, Selected{} {}
         
         void run();
         
+        std::mutex Mutex;
+        
+        Boost::puzzle Current;
+        
     private:
         network &Net;
-        ptr<key_source> Keys;
-        ptr<address_source> Addresses;
+        fees &Fees;
+        key_source &Keys;
+        address_source &Addresses;
         
         casual_random Random;
         
         double MaxDifficulty;
         double MinProfitability;
-        double FeeRate;
         
         jobs Jobs;
         std::pair<digest256, Boost::candidate> Selected;
         
-        std::vector<std::thread> Workers;
-        
-        void redeemed(const Bitcoin::transaction &redeem_tx) override;
-        
         void update_jobs(const jobs &j);
         void select_job();
+        void solved(const work::solution &) override;
         
     };
     

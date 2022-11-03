@@ -171,38 +171,12 @@ int command_spend(int arg_count, char** arg_values) {
 
 struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
     redeemer(
+        BoostPOW::network &net, 
+        BoostPOW::fees &fees, 
         uint32 threads, uint64 random_seed) : 
-        BoostPOW::redeemer{}, 
-        BoostPOW::multithreaded{threads, random_seed}, 
-        Net{}, Solved{false} {
+        BoostPOW::redeemer{net, fees}, 
+        BoostPOW::multithreaded{threads, random_seed} {
         this->start_threads();
-    }
-    BoostPOW::network Net;
-    
-    bool Solved;
-    
-    std::mutex Mutex;
-    std::condition_variable Out;
-    
-    void wait_for_solution() {
-        std::unique_lock<std::mutex> lock(Mutex);
-        if (Solved) return;
-        Out.wait(lock);
-    }
-    
-protected:
-    
-    void redeemed(const Bitcoin::transaction &redeem_tx) override {
-        std::unique_lock<std::mutex> lock(Mutex);
-        if (!redeem_tx.valid()) std::cout << "invalid transaction!" << std::endl;
-    
-        logger::log("job.complete.transaction", JSON {
-            {"txid", BoostPOW::write(redeem_tx.id())}, 
-            {"txhex", encoding::hex::write(bytes(redeem_tx))}
-        });
-        
-        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
-        Out.notify_one();
     }
 };
 
@@ -222,9 +196,9 @@ int command_redeem(int arg_count, char** arg_values) {
     po::options_description options_redeem("options for command \"redeem\"");
     
     options_redeem.add_options()
-    ("script", po::value<string>(&script_string), 
+    ("script", po::value<string>(&script_string)->default_value(""), 
         "boost output script, hex or bip 276.")
-    ("value", po::value<int64>(&value), 
+    ("value", po::value<int64>(&value)->default_value(-1), 
         "value in satoshis of the output.")
     ("txid", po::value<string>(&txid_string), 
         "txid of the tx that contains this output.")
@@ -241,7 +215,7 @@ int command_redeem(int arg_count, char** arg_values) {
         "Boost jobs with less than this sats/difficulty will be ignored.")
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
         "Boost jobs above this difficulty will be ignored")
-    ("fee_rate", po::value<double>(&fee_rate)->default_value(.5), 
+    ("fee_rate", po::value<double>(&fee_rate)->default_value(-1), 
         "The final transaction will have this fee per byte.");
     
     po::positional_options_description arguments_redeem;
@@ -263,17 +237,23 @@ int command_redeem(int arg_count, char** arg_values) {
         return 1;
     }
     
-    if (fee_rate < 0) throw string{"Fee rate must be positive"};
     std::cout << "value is " << value << std::endl;
-    if (value < 0) throw string{"Value must be positive: "};
     
-    bytes *script;
-    ptr<bytes> script_from_hex = encoding::hex::read(script_string);
-    typed_data script_from_bip_276 = typed_data::read(script_string);
+    BoostPOW::network Net;
     
-    if(script_from_bip_276.valid()) script = &script_from_bip_276.Data;
-    else if (script_from_hex != nullptr) script = &*script_from_hex;
-    else throw string{"could not read script"}; 
+    Boost::output_script boost_script;
+    if (script_string != "") {
+        
+        bytes *script;
+        ptr<bytes> script_from_hex = encoding::hex::read(script_string);
+        typed_data script_from_bip_276 = typed_data::read(script_string);
+        
+        if(script_from_bip_276.valid()) script = &script_from_bip_276.Data;
+        else if (script_from_hex != nullptr) script = &*script_from_hex;
+        else throw string{"could not read script"}; 
+        
+        boost_script = Boost::output_script::read(*script);
+    }
     
     Bitcoin::txid txid{txid_string};
     if (!txid.valid()) throw string{"could not read txid"};
@@ -286,12 +266,34 @@ int command_redeem(int arg_count, char** arg_values) {
     else address = Bitcoin::address{address_string};
     if (!address.valid()) throw string{"could not read address"};
     
-    Boost::output_script boost_script{*script};
-    if (!boost_script.valid()) throw string{"script is not valid"};
-
+    Boost::candidate Job;
+    
+    if (value < 0 || script_string == "") {
+        Job = Net.job(Bitcoin::outpoint{txid, index});
+        
+        if (value < 0) value = Job.value();
+        else if (value != Job.value()) throw string {"User provided value is incorrect"};
+        
+        if (script_string == "") script_string = typed_data::write(typed_data::mainnet, Job.Script.write());
+        else if (boost_script != Job.Script) throw string {"User provided script is incorrect"};
+        
+    } else Job = Boost::candidate{
+        {Boost::prevout{
+            Bitcoin::outpoint {txid, index}, 
+            Boost::output {
+                Bitcoin::satoshi{value}, 
+                boost_script}
+        }}};
+    
+    if (!Job.valid()) throw string{"script is not valid"};
+    
+    ptr<BoostPOW::fees> Fees = fee_rate < 0 ? 
+        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::network_fees>(Net)) : 
+        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::given_fees>(fee_rate));
+    
     logger::log("job.mine", JSON {
       {"script", script_string},
-      {"difficulty", double(boost_script.Target.difficulty())},
+      {"difficulty", double(Job.difficulty())},
       {"value", value},
       {"txid", txid_string},
       {"vout", index},
@@ -299,18 +301,9 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    redeemer r{threads, std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337};
+    redeemer r{Net, *Fees, threads, std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337};
     
-    r.mine(Boost::puzzle{
-            Boost::candidate{
-                {Boost::prevout{
-                    Bitcoin::outpoint {txid, index}, 
-                    Boost::output {
-                        Bitcoin::satoshi{value}, 
-                        boost_script}
-                }}}, 
-            key}, 
-        address, fee_rate);
+    r.mine(Boost::puzzle{Job, key}, address);
     
     r.wait_for_solution();
     
@@ -320,14 +313,14 @@ int command_redeem(int arg_count, char** arg_values) {
 struct manager final : BoostPOW::manager, BoostPOW::multithreaded {
     manager(
         BoostPOW::network &net, 
-        ptr<key_source> keys, 
-        ptr<address_source> addresses, 
+        BoostPOW::fees &fees, 
+        key_source &keys, 
+        address_source &addresses, 
         uint32 threads, uint64 random_seed, 
         double maximum_difficulty, 
-        double minimum_profitability, 
-        double fee_rate) : 
-        BoostPOW::manager{net, keys, addresses, 
-            BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability, fee_rate}, 
+        double minimum_profitability) : 
+        BoostPOW::manager{net, fees, keys, addresses, 
+            BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability}, 
         BoostPOW::multithreaded{threads, random_seed} {
         start_threads();
     }
@@ -357,8 +350,9 @@ int command_mine(int arg_count, char** arg_values) {
         "Boost jobs with less than this sats/difficulty will be ignored.")
     ("max_difficulty", po::value<double>(&max_difficulty)->default_value(-1), 
         "Boost jobs above this difficulty will be ignored")
-    ("fee_rate", po::value<double>(&fee_rate)->default_value(.5), 
-        "Boost jobs above this difficulty will be ignored");
+    ("fee_rate", po::value<double>(&fee_rate)->default_value(-1), 
+        "fee rate to be used in the final transaction. If not provided, " 
+        "we dial into Gorilla Pool via MAPI to get a fee quote.");
     
     po::positional_options_description arguments_mine;
     arguments_mine.add("key", 1);
@@ -376,7 +370,6 @@ int command_mine(int arg_count, char** arg_values) {
     }
     
     if (threads == 0) throw string{"Need at least 1 thread."};
-    if (fee_rate < 0) throw string{"Fee rate must be positive"};
     
     ptr<key_source> signing_keys;
     ptr<address_source> receiving_addresses;
@@ -406,17 +399,16 @@ int command_mine(int arg_count, char** arg_values) {
             std::static_pointer_cast<address_source>(std::make_shared<hd::address_source>(hd_pubkey));
         else throw string{"could not read signing key"};
     }
-    
+    std::cout << "about to start running" << std::endl;
     BoostPOW::network Net{};
     
-    auto z = Net.Gorilla.get_fee_quote();
-    auto j = JSON(z);
+    ptr<BoostPOW::fees> Fees = fee_rate < 0 ? 
+        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::network_fees>(Net)) : 
+        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::given_fees>(fee_rate));
     
-    std::cout << "Fee quote is " << j << std::endl;
-    
-    manager{Net, signing_keys, receiving_addresses, threads, 
+    manager{Net, *Fees, *signing_keys, *receiving_addresses, threads, 
         std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, 
-        max_difficulty, min_profitability, fee_rate}.run();
+        max_difficulty, min_profitability}.run();
     
     return 0;
 }
@@ -449,7 +441,8 @@ int help() {
         "\n\tthreads           -- Number of threads to mine with. Default is 1."
         "\n\tmin_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
         "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored."
-        "\n\tfee_rate          -- sats per byte of the final transaction." << std::endl;
+        "\n\tfee_rate          -- sats per byte of the final transaction."
+        "\n\t                     If not provided we get a fee quote from Gorilla Pool."<< std::endl;
     
     return 0;
 }

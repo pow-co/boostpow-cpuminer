@@ -26,6 +26,30 @@ namespace BoostPOW {
         
         bytes get_transaction(const Bitcoin::txid &);
         
+        satoshi_per_byte mining_fee();
+        
+        Boost::candidate job(const Bitcoin::outpoint &);
+        
+    };
+    
+    struct fees {
+        virtual double get() = 0;
+    };
+    
+    struct given_fees : fees {
+        double FeeRate;
+        given_fees(double f) : FeeRate{f} {}
+        double get() final override {
+            return FeeRate;
+        }
+    };
+    
+    struct network_fees : fees {
+        network &Net;
+        network_fees(network &n) : Net{n} {}
+        double get() final override {
+            return double(Net.mining_fee());
+        }
     };
     
 }

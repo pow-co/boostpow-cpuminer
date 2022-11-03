@@ -57,6 +57,7 @@ bytes BoostPOW::network::get_transaction(const Bitcoin::txid &txid) {
 }
 
 BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
+    std::lock_guard<std::mutex> lock(Mutex);
     std::cout << "calling jobs" << std::endl;
     const list<Boost::prevout> jobs_api_call{PowCo.jobs()};
     std::cout << "got jobs" << std::endl;
@@ -159,5 +160,26 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
     
     return Jobs;
     
+}
+
+satoshi_per_byte BoostPOW::network::mining_fee() {
+    std::lock_guard<std::mutex> lock(Mutex);
+    auto z = Gorilla.get_fee_quote();
+    auto j = JSON(z);
+    
+    std::cout << "Fee quote is " << j << std::endl;
+    
+    return z.Fees["standard"].MiningFee;
+}
+
+Boost::candidate BoostPOW::network::job(const Bitcoin::outpoint &) {
+    // check for job at pow co. 
+    
+    // check for job with whatsonchain. 
+    
+    // register job at pow co. 
+    
+    // log results. 
+    throw 0;
 }
 
