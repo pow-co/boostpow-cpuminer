@@ -20,9 +20,13 @@ struct pow_co : networking::HTTP_client {
     
     list<Boost::prevout> jobs(uint32 limit = 10);
     
+    Boost::prevout job(const Bitcoin::txid &);
+    Boost::prevout job(const Bitcoin::outpoint &);
+    
     inpoint spends(const Bitcoin::outpoint &);
     
     void submit_proof(const Bitcoin::txid &);
+    void submit_proof(const inpoint &);
     
     bool broadcast(const bytes &);
     

@@ -220,7 +220,10 @@ namespace BoostPOW {
         return JSON {
             {"script", typed_data::write(typed_data::mainnet, c.Script.write())}, 
             {"prevouts", arr}, 
-            {"value", int64(c.value())}};
+            {"value", int64(c.value())}, 
+            {"profitability", c.profitability()}, 
+            {"difficulty", c.difficulty()}
+        };
     }
     
     void mining_thread(miner *m, random *r, uint32 thread_number) {
@@ -263,43 +266,76 @@ namespace BoostPOW {
         for (auto &thread : Workers) thread.join();
     }
     
-    void redeemer::mine(const Boost::puzzle &p, const Bitcoin::address &redeem, double fee_rate) {
-        Current = p;
-        RedeemAddress = redeem;
-        FeeRate = fee_rate;
-        std::cout << " Puzzle posed: " << to_JSON(p) << std::endl;
-        pose(work::puzzle(Current));
-    }
-    
     void redeemer::solved(const work::solution &solution) {
         // shouldn't happen
         if (!solution.valid()) return;
-    
-        Bitcoin::transaction redeem_tx;
-        {
-            std::unique_lock<std::mutex> lock(Mutex);
-            bool proof_valid = work::proof{this->latest(), solution}.valid();
-            
-            std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
-            
-            auto value = Current.value();
-            bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
-            Bitcoin::satoshi fee{int64(ceil(FeeRate * estimate_size(Current.expected_size(), pay_script.size())))};
-            
-            std::cout << "value: " << value << "; fee rate = " << FeeRate << " proposed fee " << fee << std::endl;
-            
-            if (fee > value) throw string{"Cannot pay tx fee with boost output"};
-            
-            redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
-            
-            std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
-                ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
-        }
         
-        redeemed(redeem_tx);
+        Bitcoin::transaction redeem_tx;
+        
+        bool proof_valid = work::proof{this->latest(), solution}.valid();
+        
+        std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
+        if (!proof_valid) return;
+        
+        double fee_rate{Fees.get()};
+        
+        auto value = Current.value();
+        bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
+        auto expected_inputs_size = Current.expected_size();
+        auto estimated_size = estimate_size(expected_inputs_size, pay_script.size());
+        std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size() << std::endl;
+        std::cout << "total estimated size = " << estimated_size << std::endl;
+        Bitcoin::satoshi fee{int64(ceil(fee_rate * estimated_size))};
+        
+        std::cout << "value: " << value << "; fee rate = " << fee_rate << " proposed fee " << fee << std::endl;
+        
+        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
+        
+        redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
+        
+        std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
+            ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
+        for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size() << std::endl;
+        for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
+        
+        logger::log("job.complete.transaction", JSON {
+            {"txid", BoostPOW::write(redeem_tx.id())}, 
+            {"txhex", encoding::hex::write(bytes(redeem_tx))}
+        });
+        
+        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+        
+        std::unique_lock<std::mutex> lock(Mutex);
+        Solved = true;
+        Out.notify_one();
+    }
+    
+    void redeemer::mine(const Boost::puzzle &p, const Bitcoin::address &redeem) {
+        std::unique_lock<std::mutex> lock(Mutex);
+        Current = p;
+        RedeemAddress = redeem;
+        std::cout << " Puzzle posed: " << to_JSON(p) << std::endl;
+        pose(work::puzzle(Current));
+    }
+
+    void manager::select_job() {
+        Selected = select(Random, Jobs, MinProfitability);
+        
+        logger::log("job.selected", JSON {
+            {"script_hash", BoostPOW::write(Selected.first)},
+            {"difficulty", Selected.second.difficulty()},
+            {"profitability", Selected.second.profitability()},
+            {"job", BoostPOW::to_JSON(Selected.second)}
+        });
+        
+        Current = Boost::puzzle{Selected.second, Keys.next()};
+        
+        pose(work::puzzle(Current));
+        
     }
     
     void manager::update_jobs(const BoostPOW::jobs &j) {
+        std::unique_lock<std::mutex> lock(Mutex);
         
         Jobs = j;
         uint32 count_jobs = Jobs.size();
@@ -336,21 +372,6 @@ namespace BoostPOW {
         if (it == j.end() || it->second.Prevouts != Selected.second.Prevouts) select_job();
     }
 
-    void manager::select_job() {
-        
-        Selected = select(Random, Jobs, MinProfitability);
-        
-        logger::log("job.selected", JSON {
-            {"script_hash", BoostPOW::write(Selected.first)},
-            {"difficulty", Selected.second.difficulty()},
-            {"profitability", Selected.second.profitability()},
-            {"job", BoostPOW::to_JSON(Selected.second)}
-        });
-        
-        this->mine(Boost::puzzle{Selected.second, Keys->next()}, Addresses->next(), .5);
-        
-    }
-
     void manager::run() {
         
         while(true) {
@@ -365,8 +386,45 @@ namespace BoostPOW {
             
         }
     }
-
-    void manager::redeemed(const Bitcoin::transaction &redeem_tx) {
+    
+    void manager::solved(const work::solution &solution) {
+        std::unique_lock<std::mutex> lock(Mutex);
+        // shouldn't happen
+        if (!solution.valid()) return;
+        
+        Bitcoin::transaction redeem_tx;
+        
+        bool proof_valid = work::proof{this->latest(), solution}.valid();
+        
+        std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
+        if (!proof_valid) return;
+        
+        double fee_rate{Fees.get()};
+        
+        auto value = Current.value();
+        bytes pay_script = pay_to_address::script(Addresses.next().Digest);
+        auto expected_inputs_size = Current.expected_size();
+        auto estimated_size = estimate_size(expected_inputs_size, pay_script.size());
+        std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size() << std::endl;
+        std::cout << "total estimated size = " << estimated_size << std::endl;
+        Bitcoin::satoshi fee{int64(ceil(fee_rate * estimated_size))};
+        
+        std::cout << "value: " << value << "; fee rate = " << fee_rate << " proposed fee " << fee << std::endl;
+        
+        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
+        
+        redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
+        
+        std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
+            ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
+        for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size() << std::endl;
+        for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
+        
+        logger::log("job.complete.transaction", JSON {
+            {"txid", BoostPOW::write(redeem_tx.id())}, 
+            {"txhex", encoding::hex::write(bytes(redeem_tx))}
+        });
+        
         if (!redeem_tx.valid()) {
             select_job();
             return;
