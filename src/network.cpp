@@ -108,7 +108,7 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
         if (auto j = Jobs.find(script_hash); j != Jobs.end()) {
             
             bool closed_job = true;
-            for (const auto &u : j->second.Prevouts) if (static_cast<Bitcoin::outpoint>(u) == job.outpoint()) {
+            for (const auto &u : j->second.Prevouts.values()) if (static_cast<Bitcoin::outpoint>(u) == job.outpoint()) {
                 closed_job = false;
                 break;
             }

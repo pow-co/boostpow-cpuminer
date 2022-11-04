@@ -211,7 +211,7 @@ namespace BoostPOW {
     JSON to_JSON(const Boost::candidate &c) {
         
         JSON::array_t arr;
-        auto prevouts = c.Prevouts;
+        auto prevouts = c.Prevouts.values();
         while (!data::empty(prevouts)) {
             arr.push_back(to_JSON(prevouts.first()));
             prevouts = prevouts.rest();
