@@ -138,7 +138,7 @@ Boost::prevout pow_co::job(const Bitcoin::txid &txid) {
     if (static_cast<unsigned int>(response.Status) != 200) 
         std::cout << "pow co returns response code " << response.Status << std::endl;
     
-    return read_job(JSON::parse(response.Body), request, response);
+    return read_job(JSON::parse(response.Body)["job"], request, response);
 }
 
 Boost::prevout pow_co::job(const Bitcoin::outpoint &o) {
@@ -157,7 +157,7 @@ Boost::prevout pow_co::job(const Bitcoin::outpoint &o) {
     
     if (static_cast<unsigned int>(response.Status) != 200) 
         std::cout << "pow co returns response code " << response.Status << std::endl;
-    
-    return read_job(JSON::parse(response.Body), request, response);
+    std::cout << " response body " << response.Body << std::endl;
+    return read_job(JSON::parse(response.Body)["job"], request, response);
 }
 

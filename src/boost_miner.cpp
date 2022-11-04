@@ -237,9 +237,7 @@ int command_redeem(int arg_count, char** arg_values) {
         return 1;
     }
     
-    std::cout << "value is " << value << std::endl;
-    
-    BoostPOW::network Net;
+    BoostPOW::network Net{};
     
     Boost::output_script boost_script;
     if (script_string != "") {
@@ -266,7 +264,7 @@ int command_redeem(int arg_count, char** arg_values) {
     else address = Bitcoin::address{address_string};
     if (!address.valid()) throw string{"could not read address"};
     
-    Boost::candidate Job;
+    Boost::candidate Job{};
     
     if (value < 0 || script_string == "") {
         Job = Net.job(Bitcoin::outpoint{txid, index});
@@ -287,9 +285,9 @@ int command_redeem(int arg_count, char** arg_values) {
     
     if (!Job.valid()) throw string{"script is not valid"};
     
-    ptr<BoostPOW::fees> Fees = fee_rate < 0 ? 
-        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::network_fees>(Net)) : 
-        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::given_fees>(fee_rate));
+    BoostPOW::fees *Fees = fee_rate < 0 ? 
+        (BoostPOW::fees *)(new BoostPOW::network_fees(&Net)) : 
+        (BoostPOW::fees *)(new BoostPOW::given_fees(fee_rate));
     
     logger::log("job.mine", JSON {
       {"script", script_string},
@@ -307,6 +305,7 @@ int command_redeem(int arg_count, char** arg_values) {
     
     r.wait_for_solution();
     
+    delete Fees;
     return 0;
 }
 
@@ -402,14 +401,15 @@ int command_mine(int arg_count, char** arg_values) {
     std::cout << "about to start running" << std::endl;
     BoostPOW::network Net{};
     
-    ptr<BoostPOW::fees> Fees = fee_rate < 0 ? 
-        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::network_fees>(Net)) : 
-        std::static_pointer_cast<BoostPOW::fees>(std::make_shared<BoostPOW::given_fees>(fee_rate));
+    BoostPOW::fees *Fees = fee_rate < 0 ? 
+        (BoostPOW::fees *)(new BoostPOW::network_fees(&Net)) : 
+        (BoostPOW::fees *)(new BoostPOW::given_fees(fee_rate));
     
     manager{Net, *Fees, *signing_keys, *receiving_addresses, threads, 
         std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, 
         max_difficulty, min_profitability}.run();
     
+    delete Fees;
     return 0;
 }
 

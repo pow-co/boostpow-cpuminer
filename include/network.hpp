@@ -34,6 +34,7 @@ namespace BoostPOW {
     
     struct fees {
         virtual double get() = 0;
+        virtual ~fees() {}
     };
     
     struct given_fees : fees {
@@ -45,10 +46,10 @@ namespace BoostPOW {
     };
     
     struct network_fees : fees {
-        network &Net;
-        network_fees(network &n) : Net{n} {}
+        network *Net;
+        network_fees(network *n) : Net{n} {}
         double get() final override {
-            return double(Net.mining_fee());
+            return double(Net->mining_fee());
         }
     };
     
