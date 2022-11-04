@@ -58,9 +58,7 @@ bytes BoostPOW::network::get_transaction(const Bitcoin::txid &txid) {
 
 BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
     std::lock_guard<std::mutex> lock(Mutex);
-    std::cout << "calling jobs" << std::endl;
     const list<Boost::prevout> jobs_api_call{PowCo.jobs()};
-    std::cout << "got jobs" << std::endl;
     
     BoostPOW::jobs Jobs{};
     uint32 count_closed_jobs = 0;
@@ -172,14 +170,44 @@ satoshi_per_byte BoostPOW::network::mining_fee() {
     return z.Fees["standard"].MiningFee;
 }
 
-Boost::candidate BoostPOW::network::job(const Bitcoin::outpoint &) {
+Boost::candidate BoostPOW::network::job(const Bitcoin::outpoint &o) {
     // check for job at pow co. 
+    Boost::candidate x{{PowCo.job(o)}};
+    // check for job with whatsonchain.
+    auto script_hash = x.id();
     
-    // check for job with whatsonchain. 
+    auto script_utxos = WhatsOnChain.script().get_unspent(script_hash);
+    
+    // is the current job in the list from whatsonchain? 
+    bool match_found = false;
+    
+    for (auto const &u : script_utxos) {
+        x = x.add(Boost::prevout{u.Outpoint, Boost::output{u.Value, x.Script}});
+        
+        if (u.Outpoint == o) match_found = true;
+    }
     
     // register job at pow co. 
+    if (!match_found) {
+        auto inpoint = PowCo.spends(o);
+        
+        if (!inpoint.valid()) {
+            
+            auto history = WhatsOnChain.script().get_history(script_hash);
+            
+            for (const auto &history_txid : history) {
+                Bitcoin::transaction history_tx{get_transaction(history_txid)};
+                if (!history_tx.valid()) continue;
+                for (const Bitcoin::input &in: history_tx.Inputs) if (in.Reference == o) {
+                    PowCo.submit_proof(history_txid);
+                    break;
+                }
+                
+            } 
+            
+        } else PowCo.submit_proof(inpoint.Digest);
+    }
     
-    // log results. 
-    throw 0;
+    return x;
 }
 
