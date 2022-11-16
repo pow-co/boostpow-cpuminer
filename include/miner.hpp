@@ -68,7 +68,9 @@ namespace BoostPOW {
         }
         
         channel() : Mutex{}, In{}, Puzzle{}, Set{false} {}
-        
+        virtual ~channel() {
+            pose({});
+        }
     };
     
     struct multithreaded : channel {

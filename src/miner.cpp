@@ -1,3 +1,4 @@
+
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/script/pattern/pay_to_address.hpp>
 #include <sv/uint256.h>
@@ -203,15 +204,15 @@ namespace BoostPOW {
     void multithreaded::start_threads() {
         if (Workers.size() != 0) return;
         std::cout << "starting " << Threads << " threads." << std::endl;
-        for (int i = 1; i <= Threads; i++) 
-            Workers.emplace_back(&mining_thread, 
-                &static_cast<work::selector &>(*this), 
+        for (int i = 1; i <= Threads; i++)
+            Workers.emplace_back(&mining_thread,
+                &static_cast<work::selector &>(*this),
                 new casual_random{Seed + i}, i);
     }
-    
+
     multithreaded::~multithreaded() {
         pose({});
-        
+
         for (auto &thread : Workers) thread.join();
     }
     

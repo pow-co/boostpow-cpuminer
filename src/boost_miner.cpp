@@ -150,7 +150,7 @@ int command_spend(int arg_count, char** arg_values) {
             miner_address.Digest, 
             use_general_purpose_bits);
         output_script_bytes = output_script.write();
-
+        
         logger::log("job.create", JSON {
             {"target", target},
             {"difficulty", difficulty_input},

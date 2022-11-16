@@ -8,7 +8,6 @@ conan_basic_setup(TARGETS)
 add_library(bm STATIC
     src/whatsonchain_api.cpp 
     src/pow_co_api.cpp 
-    src/miner.cpp 
     src/network.cpp
     src/logger.cpp 
     src/jobs.cpp)
@@ -18,7 +17,17 @@ target_link_libraries(bm PUBLIC CONAN_PKG::gigamonkey)
 target_compile_features(bm PUBLIC cxx_std_20)
 set_target_properties(bm PROPERTIES CXX_EXTENSIONS OFF)
 
-add_executable(BoostMiner src/boost_miner.cpp)
+add_executable(SplitOutputs 
+    src/split_outputs.cpp 
+    src/wallet.cpp)
+
+target_link_libraries(SplitOutputs PUBLIC bm)
+target_include_directories(SplitOutputs PUBLIC include)
+
+target_compile_features(SplitOutputs PUBLIC cxx_std_20)
+set_target_properties(SplitOutputs PROPERTIES CXX_EXTENSIONS OFF)
+
+add_executable(BoostMiner src/boost_miner.cpp src/miner.cpp)
 
 target_link_libraries(BoostMiner PUBLIC bm)
 target_include_directories(BoostMiner PUBLIC include)
