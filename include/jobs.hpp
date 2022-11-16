@@ -16,6 +16,11 @@ namespace BoostPOW {
         explicit operator JSON() const;
         
     };
+    
+    string write(const Bitcoin::txid &);
+    string write(const Bitcoin::outpoint &);
+    JSON to_JSON(const Boost::candidate::prevout &);
+    JSON to_JSON(const Boost::candidate &);
 }
 
 #endif

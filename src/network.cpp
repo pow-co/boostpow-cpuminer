@@ -5,7 +5,7 @@
 
 std::mutex Mutex;
 
-bool BoostPOW::network::broadcast(const bytes &tx) {
+BoostPOW::network::broadcast_error BoostPOW::network::broadcast(const bytes &tx) {
     std::lock_guard<std::mutex> lock(Mutex);
     std::cout << "broadcasting tx " << std::endl;
     
@@ -40,7 +40,7 @@ bool BoostPOW::network::broadcast(const bytes &tx) {
         broadcast_whatsonchain << "; gorilla = "<< broadcast_gorilla << "; pow_co = " << broadcast_pow_co << std::endl;
     
     // we don't count whatsonchain because that one seems to return false positives a lot. 
-    return broadcast_gorilla || broadcast_pow_co;
+    return broadcast_gorilla || broadcast_pow_co ? broadcast_error::none : broadcast_error::unknown;
 }
 
 bytes BoostPOW::network::get_transaction(const Bitcoin::txid &txid) {

@@ -1,5 +1,5 @@
 #include <gigamonkey/script/typed_data_bip_276.hpp>
-#include <gigamonkey/redeem.hpp>
+#include <gigamonkey/script/pattern/pay_to_address.hpp>
 #include <sv/uint256.h>
 #include <miner.hpp>
 #include <logger.hpp>
@@ -53,7 +53,7 @@ namespace BoostPOW {
         return pr;
     }
     
-    std::pair<digest256, Boost::candidate> select(random &r, const jobs &j, double minimum_profitability) {
+    std::pair<digest256, Boost::candidate> random_select(random &r, const jobs &j, double minimum_profitability) {
         
         if (j.size() == 0) return {};
         
@@ -115,20 +115,6 @@ namespace BoostPOW {
         
         return cpu_solve(p, initial, max_time_seconds);
         
-    }
-    
-    string write(const Bitcoin::txid &txid) {
-        std::stringstream txid_stream;
-        txid_stream << txid;
-        string txid_string = txid_stream.str();
-        if (txid_string.size() < 73) throw string {"warning: txid string was "} + txid_string;
-        return txid_string.substr(7, 66);
-    }
-    
-    string write(const Bitcoin::outpoint &o) {
-        std::stringstream ss;
-        ss << write(o.Digest) << ":" << o.Index;
-        return ss.str();
     }
     
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay) {
@@ -202,37 +188,13 @@ namespace BoostPOW {
         
     }
     
-    JSON to_JSON(const Boost::candidate::prevout &p) {
-        return JSON {
-            {"output", write(static_cast<Bitcoin::outpoint>(p))}, 
-            {"value", int64(p.Value)}};
-    }
-    
-    JSON to_JSON(const Boost::candidate &c) {
-        
-        JSON::array_t arr;
-        auto prevouts = c.Prevouts.values();
-        while (!data::empty(prevouts)) {
-            arr.push_back(to_JSON(prevouts.first()));
-            prevouts = prevouts.rest();
-        }
-        
-        return JSON {
-            {"script", typed_data::write(typed_data::mainnet, c.Script.write())}, 
-            {"prevouts", arr}, 
-            {"value", int64(c.value())}, 
-            {"profitability", c.profitability()}, 
-            {"difficulty", c.difficulty()}
-        };
-    }
-    
-    void mining_thread(miner *m, random *r, uint32 thread_number) {
+    void mining_thread(work::selector *m, random *r, uint32 thread_number) {
         logger::log("begin thread", JSON(thread_number));
         try {
             work::puzzle puzzle{};
             while (true) {
                 
-                puzzle = m->latest();
+                puzzle = m->select();
                 
                 if (!puzzle.valid()) break;
                 work::proof proof = solve(*r, puzzle, 10);
@@ -241,7 +203,7 @@ namespace BoostPOW {
                     m->solved(proof.Solution);
                 }
                 
-                puzzle = m->latest();
+                puzzle = m->select();
             }
         } catch (const string &x) {
             std::cout << "Error " << x << std::endl;
@@ -256,7 +218,7 @@ namespace BoostPOW {
         std::cout << "starting " << Threads << " threads." << std::endl;
         for (int i = 1; i <= Threads; i++) 
             Workers.emplace_back(&mining_thread, 
-                &static_cast<miner &>(*this), 
+                &static_cast<work::selector &>(*this), 
                 new casual_random{Seed + i}, i);
     }
     
@@ -272,7 +234,7 @@ namespace BoostPOW {
         
         Bitcoin::transaction redeem_tx;
         
-        bool proof_valid = work::proof{this->latest(), solution}.valid();
+        bool proof_valid = work::proof{this->select(), solution}.valid();
         
         std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
         if (!proof_valid) return;
@@ -315,11 +277,11 @@ namespace BoostPOW {
         Current = p;
         RedeemAddress = redeem;
         std::cout << " Puzzle posed: " << to_JSON(p) << std::endl;
-        pose(work::puzzle(Current));
+        this->pose(work::puzzle(Current));
     }
 
     void manager::select_job() {
-        Selected = select(Random, Jobs, MinProfitability);
+        Selected = random_select(Random, Jobs, MinProfitability);
         
         logger::log("job.selected", JSON {
             {"script_hash", BoostPOW::write(Selected.first)},
@@ -379,7 +341,11 @@ namespace BoostPOW {
             try {
                 update_jobs(Net.jobs(100));
             } catch (const networking::HTTP::exception &exception) {
-                std::cout << "API problem: " << exception.what() << std::endl;
+                std::cout << "API problem: " << exception.what() << 
+                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.Port << 
+                    "://" << exception.Request.Host << exception.Request.Path << 
+                    "\n\theaders: " << exception.Request.Headers << 
+                    "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
             }
             
             std::this_thread::sleep_for (std::chrono::seconds(900));
@@ -394,7 +360,7 @@ namespace BoostPOW {
         
         Bitcoin::transaction redeem_tx;
         
-        bool proof_valid = work::proof{this->latest(), solution}.valid();
+        bool proof_valid = work::proof{this->select(), solution}.valid();
         
         std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
         if (!proof_valid) return;

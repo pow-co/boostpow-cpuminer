@@ -1,7 +1,7 @@
 #include <wallet.hpp>
 #include <whatsonchain_api.hpp>
 #include <gigamonkey/fees.hpp>
-#include <gigamonkey/redeem.hpp>
+#include <gigamonkey/script/pattern/pay_to_address.hpp>
 #include <gigamonkey/incomplete.hpp>
 #include <gigamonkey/script/machine.hpp>
 #include <math.h>
@@ -9,8 +9,8 @@
 #include <fstream>
 
 std::ostream &write_json(std::ostream &o, const p2pkh_prevout &p) {
-    return o << "{\"wif\": \"" << p.Key << "\", \"txid\": \"" << p.TXID.Value << 
-        "\", \"index\": " << p.Index << ", \"value\": " << int64(p.Value) << "}";
+    return o << "{\"wif\": \"" << p.Key << "\", \"outpoint\": \"" << p.Outpoint.Digest.Value << 
+        "\", \"index\": " << p.Outpoint.Index << ", \"value\": " << int64(p.Value) << "}";
 }
 
 std::ostream &write_json(std::ostream &o, const wallet &w) {
@@ -55,7 +55,7 @@ wallet read_json(std::istream &i) {
     list<p2pkh_prevout> prevouts;
     for (const json p: pp) prevouts <<= read_prevout(p);
     
-    return wallet{prevouts, hd::bip32::secret{string(j["master"])}, data::uint32(j["index"])};
+    return wallet{prevouts, HD::BIP_32::secret{string(j["master"])}, data::uint32(j["index"])};
 }
 
 Bitcoin::satoshi wallet::value() const {
@@ -73,11 +73,11 @@ wallet wallet::insert(const p2pkh_prevout &p) const {
 }
 
 p2pkh_prevout::operator Bitcoin::prevout() const {
-    return Bitcoin::prevout{Bitcoin::outpoint{TXID, Index}, Bitcoin::output{Value, pay_to_address::script(Key.address().Digest)}};
+    return Bitcoin::prevout{Outpoint, Bitcoin::output{Value, pay_to_address::script(Key.address().Digest)}};
 }
 
 uint64 redeem_script_size(bool compressed_pubkey) {
-    return (compressed_pubkey ? 33 : 65) + 2 + Bitcoin::signature::MaxSignatureSize;
+    return (compressed_pubkey ? 33 : 65) + 2 + Bitcoin::signature::MaxSize;
 }
 
 constexpr uint64 p2sh_script_size = 24;
@@ -180,7 +180,7 @@ wallet read_wallet_from_file(const std::string &filename) {
     return read_json(my_file);
 }
 
-wallet restore(const hd::bip32::secret &master, uint32 max_look_ahead) {
+wallet restore(const HD::BIP_32::secret &master, uint32 max_look_ahead) {
     
     wallet w{{}, master, 0};
     

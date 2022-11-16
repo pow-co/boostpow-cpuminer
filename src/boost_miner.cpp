@@ -6,7 +6,7 @@
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/p2p/var_int.hpp>
 #include <gigamonkey/schema/hd.hpp>
-#include <gigamonkey/redeem.hpp>
+#include <gigamonkey/script/pattern/pay_to_address.hpp>
 
 using namespace Gigamonkey;
 namespace po = boost::program_options;
@@ -54,7 +54,7 @@ int command_spend(int arg_count, char** arg_values) {
         return 1;
     }
     
-    if (script_version < 1 || script_version > 2) throw string{"invalid script version"};
+    if (script_version < 1 || script_version > 2) throw data::exception{"invalid script version"};
     
     // Content is what is to be boosted. Could be a hash or
     // could be text that's 32 bytes or less. There is a
@@ -70,7 +70,7 @@ int command_spend(int arg_count, char** arg_values) {
     // In my library, we read the string backwards by putting
     // an 0x at the front. 
     digest256 content{content_hash_hex};
-    if (!content.valid()) throw (string{"could not read content: "} + content_hash_hex);
+    if (!content.valid()) throw data::exception{} << "could not read content: " << content_hash_hex;
     
     // difficulty is a unit that is inversely proportional to 
     // target. One difficulty is proportional to 2^32
@@ -79,10 +79,10 @@ int command_spend(int arg_count, char** arg_values) {
     // a difficulty of 1/1000 should be easy to do on a cpu quickly. 
     // Difficulty 1 is the difficulty of the genesis block. 
     work::compact target{work::difficulty{difficulty_input}};
-    if (!target.valid()) throw (std::string{"could not read difficulty "});
+    if (!target.valid()) throw data::exception{} << "could not read difficulty " << difficulty_input;
     
     // Tag/topic does not need to be anything. 
-    if (topic.size() > 20) throw string{"topic is too big: must be 20 or fewer bytes"};
+    if (topic.size() > 20) throw data::exception{"topic is too big: must be 20 or fewer bytes"};
     
     // additional data does not need to be anything but it 
     // can be used to provide information about a boost or
@@ -138,7 +138,7 @@ int command_spend(int arg_count, char** arg_values) {
         });
     } else {
         Bitcoin::address miner_address{miner_address_string};
-        if (!miner_address.valid()) throw (std::string{"could not read miner address: "} + string{miner_address_string});
+        if (!miner_address.valid()) throw data::exception{} << "could not read miner address: " << miner_address_string;
         
         output_script = Boost::output_script::contract(
             category, 
@@ -248,13 +248,13 @@ int command_redeem(int arg_count, char** arg_values) {
         
         if(script_from_bip_276.valid()) script = &script_from_bip_276.Data;
         else if (script_from_hex != nullptr) script = &*script_from_hex;
-        else throw string{"could not read script"}; 
+        else throw data::exception{"could not read script"}; 
         
         boost_script = Boost::output_script::read(*script);
     }
     
     Bitcoin::txid txid{txid_string};
-    if (!txid.valid()) throw string{"could not read txid"};
+    if (!txid.valid()) throw data::exception{} << "could not read txid " << txid_string;
     
     Bitcoin::secret key{wif_string};
     if (!key.valid()) throw string{"could not read secret key"};
@@ -262,7 +262,7 @@ int command_redeem(int arg_count, char** arg_values) {
     Bitcoin::address address;
     if (address_string == "") address = key.address();
     else address = Bitcoin::address{address_string};
-    if (!address.valid()) throw string{"could not read address"};
+    if (!address.valid()) throw data::exception{} << "could not read address" << address_string;
     
     Boost::candidate Job{};
     
@@ -270,10 +270,10 @@ int command_redeem(int arg_count, char** arg_values) {
         Job = Net.job(Bitcoin::outpoint{txid, index});
         
         if (value < 0) value = Job.value();
-        else if (value != Job.value()) throw string {"User provided value is incorrect"};
+        else if (value != Job.value()) throw data::exception {"User provided value is incorrect"};
         
         if (script_string == "") script_string = typed_data::write(typed_data::mainnet, Job.Script.write());
-        else if (boost_script != Job.Script) throw string {"User provided script is incorrect"};
+        else if (boost_script != Job.Script) throw data::exception {"User provided script is incorrect"};
         
     } else Job = Boost::candidate{
         {Boost::prevout{
@@ -283,7 +283,7 @@ int command_redeem(int arg_count, char** arg_values) {
                 boost_script}
         }}};
     
-    if (!Job.valid()) throw string{"script is not valid"};
+    if (!Job.valid()) throw data::exception{"script is not valid"};
     
     BoostPOW::fees *Fees = fee_rate < 0 ? 
         (BoostPOW::fees *)(new BoostPOW::network_fees(&Net)) : 
@@ -374,28 +374,28 @@ int command_mine(int arg_count, char** arg_values) {
     ptr<address_source> receiving_addresses;
     
     Bitcoin::secret key{key_string};
-    hd::bip32::secret hd_key{key_string};
+    HD::BIP_32::secret hd_key{key_string};
     
     if (key.valid()) signing_keys = 
         std::static_pointer_cast<key_source>(std::make_shared<single_key_source>(key));
     else if (hd_key.valid()) signing_keys = 
-        std::static_pointer_cast<key_source>(std::make_shared<hd::key_source>(hd_key));
+        std::static_pointer_cast<key_source>(std::make_shared<HD::key_source>(hd_key));
     else throw string{"could not read signing key"};
     
     if (address_string == "") {
         if (key.valid()) receiving_addresses = 
             std::static_pointer_cast<address_source>(std::make_shared<single_address_source>(key.address()));
         else if (hd_key.valid()) receiving_addresses = 
-            std::static_pointer_cast<address_source>(std::make_shared<hd::address_source>(hd_key.to_public()));
+            std::static_pointer_cast<address_source>(std::make_shared<HD::address_source>(hd_key.to_public()));
         else throw string{"could not read signing key"};
     } else {
         Bitcoin::address address{address_string};
-        hd::bip32::pubkey hd_pubkey{address_string};
+        HD::BIP_32::pubkey hd_pubkey{address_string};
         
         if (address.valid()) receiving_addresses = 
             std::static_pointer_cast<address_source>(std::make_shared<single_address_source>(address));
         else if (hd_pubkey.valid()) receiving_addresses = 
-            std::static_pointer_cast<address_source>(std::make_shared<hd::address_source>(hd_pubkey));
+            std::static_pointer_cast<address_source>(std::make_shared<HD::address_source>(hd_pubkey));
         else throw string{"could not read signing key"};
     }
     std::cout << "about to start running" << std::endl;
@@ -463,8 +463,14 @@ int main(int arg_count, char** arg_values) {
     } catch (const std::string x) {
         std::cout << "Error: " << x << std::endl;
         return 1;
+    } catch (const data::exception &x) {
+        std::cout << "Error: " << x.what() << std::endl;
+        return 1;
     } catch (const std::exception &x) {
-        std::cout << "Strange error: " << x.what() << std::endl;
+        std::cout << "Unexpected error: " << x.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cout << "Unknown error " << std::endl;
         return 1;
     }
     
