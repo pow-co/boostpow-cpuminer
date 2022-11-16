@@ -4,6 +4,7 @@
 #include <logger.hpp>
 #include <miner.hpp>
 #include <network.hpp>
+#include <data/io/exception.hpp>
 
 int command_generate(int arg_count, char** arg_values) {
     if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
@@ -24,19 +25,19 @@ int command_generate(int arg_count, char** arg_values) {
     
     secp256k1::secret secret;
     
-    hd::chain_code chain_code(32);
+    HD::chain_code chain_code(32);
     
     std::copy(bits.begin(), bits.begin() + 32, secret.Value.begin());
     std::copy(bits.begin() + 32, bits.end(), chain_code.begin());
     
-    hd::bip32::secret master{secret, chain_code, hd::bip32::main};
+    HD::BIP_32::secret master{secret, chain_code, HD::BIP_32::main};
     
     write_to_file(wallet{{}, master, 0}, filename);
     return 0;
 }
 
 int command_receive(int arg_count, char** arg_values) {
-    if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
+    if (arg_count != 1) throw data::exception{"invalid number of arguments; one expected."};
     
     std::string filename{arg_values[0]};
     auto w = read_wallet_from_file(filename);
@@ -52,7 +53,7 @@ int command_receive(int arg_count, char** arg_values) {
 }
 
 int command_import(int arg_count, char** arg_values) {
-    if (arg_count != 5) throw std::string{"invalid number of arguments; five expected."};
+    if (arg_count != 5) throw data::exception{"invalid number of arguments; five expected."};
     
     std::string filename{arg_values[0]};
     
@@ -70,7 +71,7 @@ int command_import(int arg_count, char** arg_values) {
     std::stringstream{arg_value} >> value;
     
     Bitcoin::secret key{arg_wif};
-    if (!key.valid()) throw string {"could not read secret key"};
+    if (!key.valid()) throw data::exception {"could not read secret key"};
     
     auto w = read_wallet_from_file(filename);
     
@@ -81,7 +82,7 @@ int command_import(int arg_count, char** arg_values) {
 }
 
 int command_send(int arg_count, char** arg_values) {
-    if (arg_count != 3) throw std::string{"invalid number of arguments; three expected."};
+    if (arg_count != 3) throw data::exception {"invalid number of arguments; three expected."};
     
     std::string filename{arg_values[0]};
     auto w = read_wallet_from_file(filename);
@@ -91,7 +92,7 @@ int command_send(int arg_count, char** arg_values) {
 }
 
 int command_value(int arg_count, char** arg_values) {
-    if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
+    if (arg_count != 1) throw data::exception {"invalid number of arguments; one expected."};
     
     std::string filename{arg_values[0]};
     std::cout << read_wallet_from_file(filename).value() << std::endl;
@@ -101,7 +102,7 @@ int command_value(int arg_count, char** arg_values) {
 
 int command_boost(int arg_count, char** arg_values) {
     
-    if (arg_count < 4 || arg_count > 7) throw std::string{"invalid number of arguments; should at least 4 and at most 7"};
+    if (arg_count < 4 || arg_count > 7) data::exception {"invalid number of arguments; should at least 4 and at most 7"};
     
     std::string filename{arg_values[0]};
     auto w = read_wallet_from_file(filename);
@@ -113,12 +114,12 @@ int command_boost(int arg_count, char** arg_values) {
     
     Bitcoin::satoshi value = satoshi_value;
     
-    if (value > w.value()) throw string {"insufficient funds"};
+    if (value > w.value()) throw data::exception {"insufficient funds"};
     
     string arg_content{arg_values[2]};
     
     digest256 content{arg_content};
-    if (!content.valid()) throw (string{"could not read content: "} + arg_content);
+    if (!content.valid()) throw data::exception{} << "could not read content: " << arg_content;
     
     double diff = 0;
     string difficulty_input{arg_values[3]};
@@ -126,7 +127,7 @@ int command_boost(int arg_count, char** arg_values) {
     diff_stream >> diff;
     
     work::compact target{work::difficulty{diff}};
-    if (!target.valid()) throw (std::string{"could not read difficulty: "} + difficulty_input);
+    if (!target.valid()) throw data::exception{} << "could not read difficulty: " << difficulty_input;
     
     bytes topic{};
     bytes additional_data{};
@@ -134,13 +135,13 @@ int command_boost(int arg_count, char** arg_values) {
     if (arg_count > 4) {
     
         ptr<bytes> topic_read = encoding::hex::read(string{arg_values[4]});
-        if (topic_read == nullptr || topic_read->size() > 20) throw (std::string{"could not read topic: "} + string{arg_values[4]});
+        if (topic_read == nullptr || topic_read->size() > 20) throw data::exception{} << "could not read topic: " << arg_values[4];
         topic = *topic_read;
     }
     
     if (arg_count > 5) {
         ptr<bytes> add_data = encoding::hex::read(string{arg_values[5]});
-        if (add_data == nullptr) throw (std::string{"could not read additional_data: "} + string{arg_values[5]});
+        if (add_data == nullptr) throw data::exception{} << "could not read additional_data: " << arg_values[5];
         additional_data = *add_data;
     }
     
@@ -149,11 +150,11 @@ int command_boost(int arg_count, char** arg_values) {
     if (arg_count > 6) {
         string boost_type{arg_values[6]};
         if (boost_type == "contract") type = Boost::contract;
-        else if (boost_type != "bounty") throw (std::string{"could not boost type: "} + string{arg_values[6]});
+        else if (boost_type != "bounty") throw data::exception{} << "could not boost type: " << arg_values[6];
         
     }
     
-    if (type == Boost::contract) throw std::string{"We do not do boost contract yet"};
+    if (type == Boost::contract) throw data::exception {"We do not do boost contract yet"};
     
     Boost::output_script boost_output_script = Boost::output_script::bounty(
         0, content, target, topic, 
@@ -172,7 +173,7 @@ int command_boost(int arg_count, char** arg_values) {
         boost_output_index++;
     }
     
-    if (boost_output_index == spend.Transaction.Outputs.size()) throw string {"could not find boost output index"};
+    if (boost_output_index == spend.Transaction.Outputs.size()) throw data::exception {"could not find boost output index"};
     
     BoostPOW::network net{};
     
@@ -206,13 +207,13 @@ int command_boost(int arg_count, char** arg_values) {
 }
 
 int command_restore(int arg_count, char** arg_values) {
-    if (arg_count > 3) throw std::string{"invalid number of arguments; two or three expected."};
+    if (arg_count > 3) throw data::exception {"invalid number of arguments; two or three expected."};
     
     std::string filename{arg_values[0]};
     std::string master_human{arg_values[1]};
     
-    hd::bip32::secret master{master_human};
-    if (!master.valid()) throw string{"could not read HD private key"};
+    HD::BIP_32::secret master{master_human};
+    if (!master.valid()) throw data::exception {"could not read HD private key"};
     
     uint32 max_look_ahead = 25;
     if (arg_count == 3) {
@@ -288,8 +289,8 @@ int main(int arg_count, char** arg_values) {
         if (function == "help") return help();
         help();
         
-    } catch (std::string x) {
-        std::cout << "Error: " << x << std::endl;
+    } catch (data::exception x) {
+        std::cout << "Error: " << x.what() << std::endl;
         return 1;
     }
     

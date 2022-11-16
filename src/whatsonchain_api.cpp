@@ -45,10 +45,15 @@ UTXO::operator JSON() const {
 list<UTXO> whatsonchain::addresses::get_unspent(const Bitcoin::address &addr) {
     std::stringstream ss;
     ss << "/v1/bsv/main/address/" << addr << "/unspent";
-    auto response = API.GET(ss.str());
+    auto request = API.Rest.GET(ss.str());
+    auto response = API(request);
     
-    if (response.Status != networking::HTTP::status::ok || 
-        response.Headers[networking::HTTP::header::content_type] != "application/JSON") throw response;
+    if (response.Status != networking::HTTP::status::ok) {
+        std::stringstream z;
+        z << "status = \"" << response.Status << "\"; content_type = " << 
+            response.Headers[networking::HTTP::header::content_type] << "; body = \"" << response.Body << "\"";
+        throw networking::HTTP::exception{request, response, z.str()};
+    }
     
     JSON info = JSON::parse(response.Body);
     

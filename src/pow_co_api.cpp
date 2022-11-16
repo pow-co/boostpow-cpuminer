@@ -31,8 +31,11 @@ list<Boost::prevout> pow_co::jobs(uint32 limit) {
     auto request = this->Rest.GET("/api/v1/boost/jobs", {{"limit", ss.str()}});
     auto response = this->operator()(request);
     
-    if (response.Status != networking::HTTP::status::ok) 
-        throw networking::HTTP::exception{request, response, "response status is not ok"};
+    if (response.Status != networking::HTTP::status::ok) {
+        std::stringstream ss;
+        ss << "response status is " << response.Status;
+        throw networking::HTTP::exception{request, response, ss.str() };
+    }
     /*
     if (response.Headers[networking::HTTP::header::content_type] != "application/JSON") 
         throw networking::HTTP::exception{request, response, "expected content type application/JSON"};
@@ -61,8 +64,11 @@ inpoint pow_co::spends(const Bitcoin::outpoint &outpoint) {
     auto request = this->Rest.GET(path_stream.str());
     auto response = this->operator()(request);
     
-    if (response.Status != networking::HTTP::status::ok) 
-        throw networking::HTTP::exception{request, response, "response status is not ok"};
+    if (response.Status != networking::HTTP::status::ok) {
+        std::stringstream ss;
+        ss << "response status is " << response.Status;
+        throw networking::HTTP::exception{request, response, ss.str() };
+    }
     
     list<Boost::prevout> boost_jobs;
     try {

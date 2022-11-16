@@ -2,6 +2,7 @@
 #define BOOSTMINER_MINER
 
 #include <gigamonkey/schema/keysource.hpp>
+#include <gigamonkey/work/solver.hpp>
 #include <random.hpp>
 #include <network.hpp>
 #include <thread>
@@ -29,18 +30,10 @@ namespace BoostPOW {
     
     uint64 estimate_size(size_t inputs_size, size_t pay_script_size);
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
-    
-    struct miner : virtual work::challenger {
-        // get latest job. If there is no job yet, block. 
-        // pointer will be null if the thread is supposed to stop. 
-        virtual work::puzzle latest() = 0;
-        
-        virtual ~miner() {}
-    };
 
-    void mining_thread(miner *, random *, uint32);
+    void mining_thread(work::selector *, random *, uint32);
     
-    struct channel : virtual miner {
+    struct channel : virtual work::selector, virtual work::solver {
         std::mutex Mutex;
         std::condition_variable In;
         
@@ -57,7 +50,7 @@ namespace BoostPOW {
         
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        work::puzzle latest() final override {
+        work::puzzle select() final override {
             std::unique_lock<std::mutex> lock(Mutex);
             if (!Set) In.wait(lock);
             return Puzzle;
@@ -84,9 +77,9 @@ namespace BoostPOW {
         std::vector<std::thread> Workers;
     };
     
-    struct redeemer : virtual miner {
+    struct redeemer : virtual work::selector, virtual work::solver {
         redeemer(network &net, fees &f) : 
-            miner{}, Mutex{}, Out{}, Current{}, RedeemAddress{}, 
+            work::selector{}, Mutex{}, Out{}, Current{}, RedeemAddress{}, 
             Net{net}, Fees{f}, Solved{false} {}
         
         void mine(const Boost::puzzle &p, const Bitcoin::address &redeem);
@@ -112,7 +105,7 @@ namespace BoostPOW {
         void solved(const work::solution &) override;
     };
     
-    struct manager : virtual miner {
+    struct manager : virtual work::selector, virtual work::solver {
         manager(
             network &net, 
             fees &f,
@@ -120,7 +113,7 @@ namespace BoostPOW {
             address_source &addresses, 
             casual_random random,  
             double maximum_difficulty, 
-            double minimum_profitability) : miner{}, Mutex{}, Current{}, 
+            double minimum_profitability) : work::selector{}, Mutex{}, Current{}, 
             Net{net}, Fees{f}, 
             Keys{keys}, Addresses{addresses}, 
             MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
@@ -151,11 +144,6 @@ namespace BoostPOW {
         void solved(const work::solution &) override;
         
     };
-    
-    string write(const Bitcoin::txid &);
-    string write(const Bitcoin::outpoint &);
-    JSON to_JSON(const Boost::candidate::prevout &);
-    JSON to_JSON(const Boost::candidate &);
     
 }
 

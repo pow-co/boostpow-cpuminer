@@ -20,8 +20,6 @@ namespace BoostPOW {
         network() : IO{}, HTTP{IO}, WhatsOnChain{HTTP}, PowCo{HTTP}, 
             Gorilla{HTTP, networking::REST{"https", "mapi.gorillapool.io"}} {}
         
-        bool broadcast(const bytes &tx);
-        
         BoostPOW::jobs jobs(uint32 limit = 10);
         
         bytes get_transaction(const Bitcoin::txid &);
@@ -29,6 +27,26 @@ namespace BoostPOW {
         satoshi_per_byte mining_fee();
         
         Boost::candidate job(const Bitcoin::outpoint &);
+        
+        struct broadcast_error {
+            enum error {
+                none, 
+                unknown, 
+                network_connection_fail, 
+                insufficient_fee, 
+                invalid_transaction
+            };
+            
+            error Error;
+            
+            broadcast_error(error e): Error{e} {}
+            
+            operator bool() {
+                return Error == none;
+            }
+        };
+        
+        broadcast_error broadcast(const bytes &tx);
         
     };
     

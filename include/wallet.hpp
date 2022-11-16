@@ -9,8 +9,7 @@ using namespace Gigamonkey;
 
 struct p2pkh_prevout {
     
-    Gigamonkey::digest256 TXID;
-    data::uint32 Index;
+    Bitcoin::outpoint Outpoint;
     Bitcoin::satoshi Value;
     
     Gigamonkey::Bitcoin::secret Key;
@@ -19,12 +18,16 @@ struct p2pkh_prevout {
     
 };
 
+std::ostream inline &operator<<(std::ostream &o, const p2pkh_prevout &p) {
+    return o << "p2pkh_prevout{" << p.Outpoint << ", Value: " << p.Value << ", Key: " << p.Key;
+}
+
 struct wallet {
     
     static constexpr double default_fee_rate = 0.5;
     
     list<p2pkh_prevout> Prevouts;
-    hd::bip32::secret Master;
+    HD::BIP_32::secret Master;
     data::uint32 Index;
     
     Bitcoin::satoshi value() const;
@@ -58,6 +61,6 @@ void write_to_file(const wallet &w, const std::string &filename);
 
 wallet read_wallet_from_file(const std::string &filename);
 
-wallet restore(const hd::bip32::secret &master, uint32 max_look_ahead);
+wallet restore(const HD::BIP_32::secret &master, uint32 max_look_ahead);
 
 #endif
