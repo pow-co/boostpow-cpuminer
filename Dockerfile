@@ -15,7 +15,6 @@ RUN pip install conan
 RUN conan config set general.revisions_enabled=1
 RUN conan profile new default --detect
 RUN conan profile update settings.compiler.libcxx=libstdc++11 default
-RUN conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/pow-virtual
 
 #secp256k1
 WORKDIR /home/conan/
