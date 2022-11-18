@@ -68,9 +68,19 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
     auto count_closed_job = [this, &count_closed_jobs, &script_histories, &redemptions](const Boost::prevout &job) -> void {
         count_closed_jobs++;
         
-        auto inpoint = PowCo.spends(job.outpoint());
+        inpoint in;
+        try {
+            in = PowCo.spends(job.outpoint());
+        } catch (networking::HTTP::exception &exception) {
+            // continue if this call fails, as it is not essential. 
+            std::cout << "API problem: " << exception.what() << 
+                "\n\tcall: " << exception.Request.Method << " " << exception.Request.Port << 
+                "://" << exception.Request.Host << exception.Request.Path << 
+                "\n\theaders: " << exception.Request.Headers << 
+                "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
+        }
         
-        if (!inpoint.valid()) {
+        if (!in.valid()) {
             auto script_hash = job.id();
             
             auto history = script_histories.find(script_hash);
@@ -98,7 +108,7 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
                 
             } 
             
-        } else PowCo.submit_proof(inpoint.Digest);
+        } else PowCo.submit_proof(in.Digest);
     };
     
     for (const Boost::prevout &job : jobs_api_call) {
