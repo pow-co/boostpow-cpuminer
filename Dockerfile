@@ -28,7 +28,7 @@ RUN conan create . proofofwork/stable
 #data
 WORKDIR /home/conan/
 RUN rm -rf data
-RUN git clone --depth 1 --branch master https://github.com/DanielKrawisz/data.git
+RUN git clone --depth 1 --branch production https://github.com/DanielKrawisz/data.git
 WORKDIR /home/conan/data
 RUN conan install .
 RUN conan create . proofofwork/stable
@@ -36,7 +36,7 @@ RUN conan create . proofofwork/stable
 #gigamonkey
 WORKDIR /home/conan/
 RUN rm -rf Gigamonkey
-RUN git clone --depth 1 --branch master https://github.com/Gigamonkey-BSV/Gigamonkey.git
+RUN git clone --depth 1 --branch production https://github.com/Gigamonkey-BSV/Gigamonkey.git
 WORKDIR /home/conan/Gigamonkey
 RUN conan install .
 RUN conan create . proofofwork/stable
