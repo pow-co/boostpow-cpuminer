@@ -17,6 +17,22 @@ RUN conan profile new default --detect
 RUN conan profile update settings.compiler.libcxx=libstdc++11 default
 RUN conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/pow-virtual
 
+#secp256k1
+WORKDIR /home/conan/
+RUN rm -rf secp256k1
+RUN git clone --depth 1 --branch master https://github.com/pow-co/secp256k1.git
+WORKDIR /home/conan/secp256k1
+RUN conan install .
+RUN conan create . proofofwork/stable
+
+#data
+WORKDIR /home/conan/
+RUN rm -rf data
+RUN git clone --depth 1 --branch master https://github.com/DanielKrawisz/data.git
+WORKDIR /home/conan/data
+RUN conan install .
+RUN conan create . proofofwork/stable
+
 #gigamonkey
 WORKDIR /home/conan/
 RUN rm -rf Gigamonkey
