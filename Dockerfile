@@ -19,7 +19,7 @@ RUN conan profile update settings.compiler.libcxx=libstdc++11 default
 #secp256k1
 WORKDIR /home/conan/
 RUN rm -rf secp256k1
-RUN git clone --depth 1 --branch master https://github.com/pow-co/secp256k1.git
+RUN git clone --depth 1 --branch master https://github.com/KatrinaAS/secp256k1.git
 WORKDIR /home/conan/secp256k1
 RUN conan install .
 RUN conan create . proofofwork/stable
