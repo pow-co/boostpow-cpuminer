@@ -4,6 +4,15 @@ This c++ program depends on the Gigamonkey repository and is designed to pull in
 
 For distribution it is meant that this repository may be built for mac, linux, and windows, as well as packaged for Docker. Ideally also there will be an apt package repository.
 
+## Run from docker
+
+This is the easiest way to use BoostMiner. 
+
+1. Download the latest master branch of this software. 
+2. `docker build -t boostpow .` (This should take a while.)
+3. `docker run boostpow ./bin/BoostMiner help` This will show the help message for the mining software. 
+   See heading *Usage* below. 
+
 ## Installation
 
 We use conan package manager to install the dependencies and build the applicatoin
@@ -22,38 +31,34 @@ Is needed to add the correct repository to conan.
 
 ```
 ./BoostMiner help
-input should be "function" "args"... where function is 
+input should be <function> <args>... --<option>=<value>... where function is 
 	spend      -- create a Boost output.
 	redeem     -- mine and redeem an existing boost output.
+	mine       -- call the pow.co API to get jobs to mine.
 For function "spend", remaining inputs should be 
 	content    -- hex for correct order, hexidecimal for reversed.
-	difficulty -- 
-	topic      -- string max 20 bytes.
-	add. data  -- string, any size.
-	address    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty.
+	difficulty -- a positive number.
+	topic      -- (optional) string max 20 bytes.
+	add. data  -- (optional) string, any size.
+	address    -- (optional) If provided, a boost contract output will be created. Otherwise it will be boost bounty.
 For function "redeem", remaining inputs should be 
-	script     -- boost output script.
+	script     -- boost output script, hex or bip 276.
 	value      -- value in satoshis of the output.
 	txid       -- txid of the tx that contains this output.
 	index      -- index of the output within that tx.
 	wif        -- private key that will be used to redeem this output.
-	address    -- your address where you will put the redeemed sats.
-	
-wallet file format is json: 
-
-{
-  'prevouts': [
-    {
-      'txid': <hex string>       // 
-      'index': <number>          // 
-      'value': <number>          //
-      'script': <hex string>     //
-    }, 
-    ...                          // any number of these.
-  ], 
-  'key': <hd priv key string>    //
-  'index': <number>              //
-}
+	address    -- (optional) your address where you will put the redeemed sats.
+	              If not provided, addresses will be generated from the key. 
+For function "mine", remaining inputs should be 
+	key        -- WIF or HD private key that will be used to redeem outputs.
+	address    -- (optional) your address where you will put the redeemed sats.
+	              If not provided, addresses will be generated from the key. 
+options for functions "redeem" and "mine" are 
+	threads           -- Number of threads to mine with. Default is 1.
+	min_profitability -- Boost jobs with less than this sats/difficulty will be ignored.
+	max_difficulty    -- Boost jobs above this difficulty will be ignored.
+	fee_rate          -- sats per byte of the final transaction.
+	                     If not provided we get a fee quote from Gorilla Pool.
 ```
 
 
