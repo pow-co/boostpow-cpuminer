@@ -170,13 +170,54 @@ int command_spend(int arg_count, char** arg_values) {
 }
 
 struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
+    BoostPOW::network &Net;
+    BoostPOW::fees &Fees;
+    Bitcoin::address Address;
+    
     redeemer(
         BoostPOW::network &net, 
         BoostPOW::fees &fees, 
+        const Bitcoin::address &address, 
         uint32 threads, uint64 random_seed) : 
-        BoostPOW::redeemer{net, fees}, 
-        BoostPOW::multithreaded{threads, random_seed} {
+        Net{net}, Fees{fees}, Address{address},
+        BoostPOW::redeemer{}, BoostPOW::multithreaded{threads, random_seed} {
         this->start_threads();
+    }
+    
+    void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
+        
+        double fee_rate{Fees.get()};
+        
+        auto value = puzzle.second.value();
+        bytes pay_script = pay_to_address::script(Address.Digest);
+        auto expected_inputs_size = puzzle.second.expected_size();
+        auto estimated_size = BoostPOW::estimate_size(expected_inputs_size, pay_script.size());
+        std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size() << std::endl;
+        std::cout << "total estimated size = " << estimated_size << std::endl;
+        Bitcoin::satoshi fee{int64(ceil(fee_rate * estimated_size))};
+        
+        std::cout << "value: " << value << "; fee rate = " << fee_rate << " proposed fee " << fee << std::endl;
+        
+        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
+        
+        auto redeem_tx = BoostPOW::redeem_puzzle(puzzle.second, solution, {Bitcoin::output{value - fee, pay_script}});
+        
+        std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
+            ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
+        for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size() << std::endl;
+        for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
+        
+        logger::log("job.complete.transaction", JSON {
+            {"txid", BoostPOW::write(redeem_tx.id())}, 
+            {"txhex", encoding::hex::write(bytes(redeem_tx))}
+        });
+        
+        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+        
+        std::unique_lock<std::mutex> lock(BoostPOW::redeemer::Mutex);
+        Solved = true;
+        Last = std::pair<digest256, Boost::puzzle>{};
+        Out.notify_one();
     }
 };
 
@@ -299,32 +340,15 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    redeemer r{Net, *Fees, threads, std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337};
+    redeemer r{Net, *Fees, address, threads, std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337};
     
-    r.mine(Boost::puzzle{Job, key}, address);
+    r.mine({Job.id(), Boost::puzzle{Job, key}});
     
     r.wait_for_solution();
     
     delete Fees;
     return 0;
 }
-
-struct manager final : BoostPOW::manager, BoostPOW::multithreaded {
-    manager(
-        BoostPOW::network &net, 
-        BoostPOW::fees &fees, 
-        key_source &keys, 
-        address_source &addresses, 
-        uint32 threads, uint64 random_seed, 
-        double maximum_difficulty, 
-        double minimum_profitability) : 
-        BoostPOW::manager{net, fees, keys, addresses, 
-            BoostPOW::casual_random{random_seed}, maximum_difficulty, minimum_profitability}, 
-        BoostPOW::multithreaded{threads, random_seed} {
-        start_threads();
-    }
-    
-};
 
 int command_mine(int arg_count, char** arg_values) {
     
@@ -405,9 +429,9 @@ int command_mine(int arg_count, char** arg_values) {
         (BoostPOW::fees *)(new BoostPOW::network_fees(&Net)) : 
         (BoostPOW::fees *)(new BoostPOW::given_fees(fee_rate));
     
-    manager{Net, *Fees, *signing_keys, *receiving_addresses, threads, 
+    BoostPOW::manager{Net, *Fees, *signing_keys, *receiving_addresses, 
         std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, 
-        max_difficulty, min_profitability}.run();
+        max_difficulty, min_profitability, threads};
     
     delete Fees;
     return 0;

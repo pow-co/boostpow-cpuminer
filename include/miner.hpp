@@ -11,9 +11,6 @@
 
 namespace BoostPOW {
     
-    // select a puzzle optimally. 
-    std::pair<digest256, Boost::candidate> select(random &, const jobs &, double minimum_profitability = 0);
-    
     Bitcoin::transaction mine(
         random &, 
         // an unredeemed Boost PoW output 
@@ -42,6 +39,7 @@ namespace BoostPOW {
         
         void pose(const work::puzzle &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
+            
             Puzzle = p;
             Set = true;
             
@@ -78,11 +76,9 @@ namespace BoostPOW {
     };
     
     struct redeemer : virtual work::selector, virtual work::solver {
-        redeemer(network &net, fees &f) : 
-            work::selector{}, Mutex{}, Out{}, Current{}, RedeemAddress{}, 
-            Net{net}, Fees{f}, Solved{false} {}
+        redeemer() : work::selector{}, Mutex{}, Out{}, Current{} {}
         
-        void mine(const Boost::puzzle &p, const Bitcoin::address &redeem);
+        void mine(const std::pair<digest256, Boost::puzzle> &p);
         
         void wait_for_solution() {
             std::unique_lock<std::mutex> lock(Mutex);
@@ -94,40 +90,56 @@ namespace BoostPOW {
         std::mutex Mutex;
         std::condition_variable Out;
         
-        Boost::puzzle Current;
-        Bitcoin::address RedeemAddress;
-        
-        network &Net;
-        fees &Fees;
+        std::pair<digest256, Boost::puzzle> Current;
+        std::pair<digest256, Boost::puzzle> Last;
         
         bool Solved;
         
         void solved(const work::solution &) override;
+        
+        virtual void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &) = 0;
     };
     
-    struct manager : virtual work::selector, virtual work::solver {
+    struct manager {
+        
+        struct redeemer final : BoostPOW::redeemer, BoostPOW::channel {
+            std::thread Worker;
+            manager *Manager;
+            redeemer(
+                manager *m, 
+                uint64 random_seed, uint32 index) : 
+                BoostPOW::redeemer{}, 
+                BoostPOW::channel{}, 
+                Worker{std::thread{mining_thread, 
+                    &static_cast<work::selector &>(*this), 
+                    new casual_random{random_seed}, index}}, Manager{m} {}
+            
+            void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
+                Manager->submit(puzzle, solution);
+            }
+        };
+        
         manager(
             network &net, 
             fees &f,
             key_source &keys, 
             address_source &addresses, 
-            casual_random random,  
+            uint64 random_seed, 
             double maximum_difficulty, 
-            double minimum_profitability) : work::selector{}, Mutex{}, Current{}, 
-            Net{net}, Fees{f}, 
-            Keys{keys}, Addresses{addresses}, 
-            MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
-            Random{random}, Jobs{}, Selected{} {}
+            double minimum_profitability, int threads);
         
-        void run();
+        void update_jobs(const BoostPOW::jobs &j);
         
-        std::mutex Mutex;
+        ~manager();
         
-        Boost::puzzle Current;
+        void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &);
         
     private:
+        std::mutex Mutex;
+        
         network &Net;
         fees &Fees;
+        
         key_source &Keys;
         address_source &Addresses;
         
@@ -137,11 +149,11 @@ namespace BoostPOW {
         double MinProfitability;
         
         jobs Jobs;
-        std::pair<digest256, Boost::candidate> Selected;
         
-        void update_jobs(const jobs &j);
-        void select_job();
-        void solved(const work::solution &) override;
+        uint32 Threads;
+        redeemer **Redeemers;
+        
+        void select_job(int i);
         
     };
     
