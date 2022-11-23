@@ -9,7 +9,7 @@ namespace BoostPOW {
     using uint256 = Gigamonkey::uint256;
 
     // A cpu miner function. 
-    work::proof cpu_solve(const work::puzzle& p, const work::solution& initial, double max_time_seconds) {
+    work::proof cpu_solve (const work::puzzle& p, const work::solution& initial, double max_time_seconds) {
         
         uint32 initial_time = initial.Share.Timestamp.Value;
         uint32 local_initial_time = Bitcoin::timestamp::now().Value;
@@ -53,28 +53,27 @@ namespace BoostPOW {
         return pr;
     }
     
-    std::pair<digest256, Boost::candidate> random_select(random &r, const jobs &j, double minimum_profitability) {
+    std::map<digest256, working>::iterator random_select (random &r, jobs &j, double minimum_profitability) {
         
         if (j.size() == 0) return {};
         
         double total_profitability = 0;
-        for (const std::pair<digest256, Boost::candidate> &p : j) if (p.second.profitability() > minimum_profitability) 
-            total_profitability += (p.second.profitability() - minimum_profitability);
+        for (const auto &p : j) total_profitability += p.second.weight(minimum_profitability, .025);
         
         double random = r.range01() * total_profitability;
         
         double accumulated_profitability = 0;
-        for (const std::pair<digest256, Boost::candidate> &p : j) if (p.second.profitability() > minimum_profitability) {
-            accumulated_profitability += (p.second.profitability() - minimum_profitability);
+        for (auto it = j.begin(); it != j.end(); it++) {
+            accumulated_profitability += it->second.weight(minimum_profitability, .025);
             
-            if (accumulated_profitability >= random) return p;
+            if (accumulated_profitability >= random) return it;
         }
         
         // shouldn't happen. 
         return {};
     }
     
-    uint64 estimate_size(
+    uint64 inline estimate_size (
         size_t inputs_size, 
         size_t pay_script_size) {
         
@@ -104,7 +103,7 @@ namespace BoostPOW {
         };
     }
     
-    work::proof solve(random &r, const work::puzzle& p, double max_time_seconds) {
+    work::proof solve (random &r, const work::puzzle& p, double max_time_seconds) {
         
         Stratum::session_id extra_nonce_1{r.uint32()};
         uint64_big extra_nonce_2{r.uint64()};
@@ -117,7 +116,7 @@ namespace BoostPOW {
         
     }
     
-    Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay) {
+    Bitcoin::transaction redeem_puzzle (const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay) {
         bytes redeem_tx = puzzle.redeem(solution, pay);
         if (redeem_tx == bytes{}) return {};
         
@@ -145,7 +144,7 @@ namespace BoostPOW {
         return redeem;
     }
     
-    Bitcoin::transaction mine(
+    Bitcoin::transaction mine (
         random &r, 
         // an unredeemed Boost PoW output 
         const Boost::puzzle &puzzle, 
@@ -188,15 +187,17 @@ namespace BoostPOW {
         
     }
     
-    void mining_thread(work::selector *m, random *r, uint32 thread_number) {
+    void mining_thread (work::selector *m, random *r, uint32 thread_number) {
         logger::log("begin thread", JSON(thread_number));
         try {
             work::puzzle puzzle{};
+            
             while (true) {
                 
                 puzzle = m->select();
                 
                 if (!puzzle.valid()) break;
+                
                 work::proof proof = solve(*r, puzzle, 10);
                 if (proof.valid()) {
                     logger::log("solution found in thread", JSON(thread_number));
@@ -234,66 +235,68 @@ namespace BoostPOW {
         
         Bitcoin::transaction redeem_tx;
         
-        bool proof_valid = work::proof{this->select(), solution}.valid();
+        if (work::proof{work::puzzle(Current.second), solution}.valid()) submit(Current, solution);
         
-        std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
-        if (!proof_valid) return;
-        
-        double fee_rate{Fees.get()};
-        
-        auto value = Current.value();
-        bytes pay_script = pay_to_address::script(RedeemAddress.Digest);
-        auto expected_inputs_size = Current.expected_size();
-        auto estimated_size = estimate_size(expected_inputs_size, pay_script.size());
-        std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size() << std::endl;
-        std::cout << "total estimated size = " << estimated_size << std::endl;
-        Bitcoin::satoshi fee{int64(ceil(fee_rate * estimated_size))};
-        
-        std::cout << "value: " << value << "; fee rate = " << fee_rate << " proposed fee " << fee << std::endl;
-        
-        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
-        
-        redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
-        
-        std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
-            ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
-        for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size() << std::endl;
-        for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
-        
-        logger::log("job.complete.transaction", JSON {
-            {"txid", BoostPOW::write(redeem_tx.id())}, 
-            {"txhex", encoding::hex::write(bytes(redeem_tx))}
-        });
-        
-        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
-        
-        std::unique_lock<std::mutex> lock(Mutex);
-        Solved = true;
-        Out.notify_one();
+        if (work::proof{work::puzzle(Last.second), solution}.valid()) submit(Last, solution);
     }
     
-    void redeemer::mine(const Boost::puzzle &p, const Bitcoin::address &redeem) {
+    void redeemer::mine(const std::pair<digest256, Boost::puzzle> &p) {
         std::unique_lock<std::mutex> lock(Mutex);
+        if (Last == std::pair<digest256, Boost::puzzle>{}) Last = Current;
         Current = p;
-        RedeemAddress = redeem;
-        std::cout << " Puzzle posed: " << to_JSON(p) << std::endl;
-        this->pose(work::puzzle(Current));
+        this->pose(work::puzzle(Current.second));
     }
-
-    void manager::select_job() {
-        Selected = random_select(Random, Jobs, MinProfitability);
+    
+    manager::manager(
+        network &net, 
+        fees &f,
+        key_source &keys, 
+        address_source &addresses, 
+        uint64 random_seed, 
+        double maximum_difficulty, 
+        double minimum_profitability, int threads) : Mutex{}, 
+        Net{net}, Fees{f}, Keys{keys}, Addresses{addresses}, 
+        MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
+        Random{random_seed}, Jobs{}, Threads{threads}, Redeemers{ new redeemer*[Threads] } {
+        
+        std::cout << "starting " << threads << " threads." << std::endl;
+        for (int i = 1; i <= threads; i++) Redeemers[i - 1] = new redeemer(this, random_seed + i, i);
+        
+        while(true) {
+            std::cout << "calling API" << std::endl;
+            try {
+                update_jobs(net.jobs(100));
+            } catch (const networking::HTTP::exception &exception) {
+                std::cout << "API problem: " << exception.what() << 
+                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.Port << 
+                    "://" << exception.Request.Host << exception.Request.Path << 
+                    "\n\theaders: " << exception.Request.Headers << 
+                    "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
+            }
+            
+            std::this_thread::sleep_for (std::chrono::seconds(900));
+            
+        }
+    }
+    
+    manager::~manager() {
+        for (int i = 1; i <= Threads; i++) delete Redeemers[i - 1];
+        delete[] Redeemers;
+    }
+    
+    void manager::select_job(int i) {
+        auto selected = random_select(Random, Jobs, MinProfitability);
+        selected->second.Workers = selected->second.Workers << i;
         
         logger::log("job.selected", JSON {
-            {"script_hash", BoostPOW::write(Selected.first)},
-            {"difficulty", Selected.second.difficulty()},
-            {"profitability", Selected.second.profitability()},
-            {"job", BoostPOW::to_JSON(Selected.second)}
+            {"thread", JSON(i)},
+            {"script_hash", BoostPOW::write(selected->first)},
+            {"difficulty", selected->second.difficulty()},
+            {"profitability", selected->second.profitability()},
+            {"job", BoostPOW::to_JSON(selected->second)}
         });
         
-        Current = Boost::puzzle{Selected.second, Keys.next()};
-        
-        pose(work::puzzle(Current));
-        
+        Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle>{selected->first, Boost::puzzle{selected->second, Keys.next()}});
     }
     
     void manager::update_jobs(const BoostPOW::jobs &j) {
@@ -325,81 +328,45 @@ namespace BoostPOW {
         
         if (viable_jobs == 0) return;
         
-        // select a new job if now job has been selected. 
-        if (Selected.first == digest256{}) return select_job();
-        
-        auto it = j.find(Selected.first);
-        
-        // job has been invalidated. 
-        if (it == j.end() || it->second.Prevouts != Selected.second.Prevouts) select_job();
-    }
-
-    void manager::run() {
-        
-        while(true) {
-            std::cout << "calling API" << std::endl;
-            try {
-                update_jobs(Net.jobs(100));
-            } catch (const networking::HTTP::exception &exception) {
-                std::cout << "API problem: " << exception.what() << 
-                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.Port << 
-                    "://" << exception.Request.Host << exception.Request.Path << 
-                    "\n\theaders: " << exception.Request.Headers << 
-                    "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
-            }
-            
-            std::this_thread::sleep_for (std::chrono::seconds(900));
-            
-        }
+        // select a new job for all mining threads. 
+        for (int i = 1; i <= Threads; i++) select_job(i);
     }
     
-    void manager::solved(const work::solution &solution) {
-        std::unique_lock<std::mutex> lock(Mutex);
-        // shouldn't happen
-        if (!solution.valid()) return;
+    void manager::submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) {
         
-        Bitcoin::transaction redeem_tx;
+        double fee_rate {Fees.get()};
         
-        bool proof_valid = work::proof{this->select(), solution}.valid();
-        
-        std::cout << "Solution found! valid? " << std::boolalpha << proof_valid << std::endl;
-        if (!proof_valid) return;
-        
-        double fee_rate{Fees.get()};
-        
-        auto value = Current.value();
+        auto value = puzzle.second.value();
         bytes pay_script = pay_to_address::script(Addresses.next().Digest);
-        auto expected_inputs_size = Current.expected_size();
-        auto estimated_size = estimate_size(expected_inputs_size, pay_script.size());
-        std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size() << std::endl;
-        std::cout << "total estimated size = " << estimated_size << std::endl;
-        Bitcoin::satoshi fee{int64(ceil(fee_rate * estimated_size))};
+        auto expected_inputs_size = puzzle.second.expected_size();
+        auto estimated_size = BoostPOW::estimate_size(expected_inputs_size, pay_script.size());
         
-        std::cout << "value: " << value << "; fee rate = " << fee_rate << " proposed fee " << fee << std::endl;
+        Bitcoin::satoshi fee {int64(ceil(fee_rate * estimated_size))};
         
-        if (fee > value) throw string{"Cannot pay tx fee with boost output"};
+        if (fee > value) throw string {"Cannot pay tx fee with boost output"};
         
-        redeem_tx = BoostPOW::redeem_puzzle(Current, solution, {Bitcoin::output{value - fee, pay_script}});
+        auto redeem_tx = BoostPOW::redeem_puzzle(puzzle.second, solution, {Bitcoin::output{value - fee, pay_script}});
         
-        std::cout << "tx size " << redeem_tx.serialized_size() << "; fee rate: " << 
-            ((double(value) - double(redeem_tx.sent())) / double(redeem_tx.serialized_size())) << std::endl;
         for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size() << std::endl;
         for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
         
-        logger::log("job.complete.transaction", JSON {
-            {"txid", BoostPOW::write(redeem_tx.id())}, 
-            {"txhex", encoding::hex::write(bytes(redeem_tx))}
-        });
+        std::unique_lock<std::mutex> lock(Mutex);
         
-        if (!redeem_tx.valid()) {
-            select_job();
-            return;
+        auto w = Jobs.find(puzzle.first);
+        if (w != Jobs.end()) {
+            
+            logger::log("job.complete.transaction", JSON {
+                {"txid", BoostPOW::write(redeem_tx.id())}, 
+                {"txhex", encoding::hex::write(bytes(redeem_tx))}
+            });
+        
+            if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+            
+            auto workers = w->second.Workers;
+            Jobs.erase(w);
+            for (int i : workers) select_job(i);
         }
         
-        Jobs.erase(Jobs.find(Selected.first));
-        select_job();
-        
-        if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
     }
     
 }

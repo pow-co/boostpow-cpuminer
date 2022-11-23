@@ -8,7 +8,25 @@ using namespace Gigamonkey;
 namespace BoostPOW {
     using uint256 = Gigamonkey::uint256;
     
-    struct jobs : std::map<digest256, Boost::candidate> {
+    struct working : Boost::candidate {
+        list<int> Workers;
+        working(const Boost::candidate &x): Boost::candidate {x}, Workers {} {}
+        working(): Boost::candidate {}, Workers {} {}
+        
+        // used to select random jobs. 
+        double weight(double minimum_profitability, double tilt) const {
+            if (this->profitability() < minimum_profitability) return 0;
+            
+            double factor = this->difficulty() / (this->difficulty() + tilt);
+            
+            double weight = 1;
+            for (int i = 0; i < this->Workers.size(); i++) weight *= factor;
+            
+            return weight * (this->profitability() - minimum_profitability);
+        }
+    };
+    
+    struct jobs : std::map<digest256, working> {
         
         digest256 add_script(const Boost::output_script &z);
         void add_prevout(const digest256 &script_hash, const Boost::prevout &u);

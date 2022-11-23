@@ -22,7 +22,7 @@ RUN rm -rf secp256k1
 RUN git clone --depth 1 --branch master https://github.com/KatrinaAS/secp256k1.git
 WORKDIR /home/conan/secp256k1
 RUN conan install .
-RUN conan create . proofofwork/stable
+RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
 
 #data
 WORKDIR /home/conan/
@@ -30,7 +30,7 @@ RUN rm -rf data
 RUN git clone --depth 1 --branch production https://github.com/DanielKrawisz/data.git
 WORKDIR /home/conan/data
 RUN conan install .
-RUN conan create . proofofwork/stable
+RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
 
 #gigamonkey
 WORKDIR /home/conan/
@@ -38,14 +38,14 @@ RUN rm -rf Gigamonkey
 RUN git clone --depth 1 --branch production https://github.com/Gigamonkey-BSV/Gigamonkey.git
 WORKDIR /home/conan/Gigamonkey
 RUN conan install .
-RUN conan create . proofofwork/stable
+RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
 
 COPY . /home/conan/boostminer
 WORKDIR /home/conan/boostminer
 RUN chmod -R 777 .
 
 RUN conan install .
-RUN conan build .
+RUN CONAN_CPU_COUNT=1 conan build .
 
 CMD ./bin/BoostMiner
 
