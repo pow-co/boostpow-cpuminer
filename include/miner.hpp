@@ -25,7 +25,20 @@ namespace BoostPOW {
         double minimum_price_per_difficulty_sats, 
         double maximum_mining_difficulty = -1);
     
-    uint64 estimate_size(size_t inputs_size, size_t pay_script_size);
+    uint64 inline estimate_size (
+        size_t inputs_size, 
+        size_t pay_script_size) {
+        
+        return inputs_size                              // inputs
+            + 4                                         // tx version
+            + 1                                         // var int value 1 (number of outputs)
+            + 8                                         // satoshi value size
+            + Bitcoin::var_int::size(pay_script_size)   // size of output script size
+            + pay_script_size                           // output script size
+            + 4;                                        // locktime
+
+    }
+    
     Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
 
     void mining_thread(work::selector *, random *, uint32);
