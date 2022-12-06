@@ -1,112 +1,25 @@
 version: 2.1
+jobs:
 
-linuxBuildDefaults: &linuxBuildDefaults
-  docker:
-    - image: conanio/gcc9:latest
-  resource_class: medium
-
-commands:
-  install_macos_build_tools:
-    steps:
-      - run:
-          name: Install conan and build tools
-          command: |
-            brew install pyenv cmake pkg-config
-            eval "$(pyenv init -)"
-            pyenv install 3.9.0
-            pyenv global 3.9.0
-            pip install conan
-
-  build_recipe:
-    parameters:
-      envVars:
-        default: ""
-        type: string
-      cliParams:
-        default: ""
-        type: string
-    steps:
-      - run:
-          name: Build conan recipe
-          command: |
-            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
-            << parameters.envVars >>conan create . proofofwork/stable << parameters.cliParams >>
-
-  setup_conan_remote:
-    steps:
-      - run:
-          name: Setup conan remote
-          command: |
-            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
-            conan config set general.revisions_enabled=True
-            conan remote add proofofwork https://conan.pow.co/artifactory/api/conan/conan
-
-  setup_conan_remote_credentials:
-    steps:
-      - run:
-          name: Setup conan remote
-          command: |
-            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
-            conan user -p $CONAN_PASSWORD -r proofofwork $CONAN_USERNAME
-
-  upload_conan_package:
-    steps:
-      - run:
-          name: Upload conan package
-          command: |
-            [[ -n $MACOS_BUILD ]] && eval "$(pyenv init -)"
-            conan upload BoostMiner/${CIRCLE_TAG:1}@proofofwork/stable --all -r proofofwork --confirm
-
-  publish_artifacts:
-    parameters:
-      destinationFileName:
-        type: string
-    steps:
-      - run:
-          name: Copy artifacts to the temp directory
-          command: |
-            mkdir -p /tmp/artifacts
-            cp ~/.conan/data/BoostMiner/*/proofofwork/stable/build/*/bin/* /tmp/artifacts
-            ls -l /tmp/artifacts
-      - store_artifacts:
-          path: /tmp/artifacts/BoostMiner
-          destination: << parameters.destinationFileName >>
-
-  build_linux:
+  build_docker:
+    docker:
+      - image: cimg/base:2021.04
     steps:
       - checkout
-      - setup_conan_remote
-      - build_recipe:
-          cliParams: "-s compiler.libcxx=libstdc++11"
-          envVars: "CMAKE_BUILD_CORES_COUNT=-j4 "
-      - publish_artifacts:
-          destinationFileName: "boostminer_linux"
+      - setup_remote_docker
+      - run:
+          name: Build docker image
+          command: docker build -t boostpow-cpuminer . 
+      - run:
+          name: Push to Docker Hub
+          command: |
+            docker login --username $DOCKER_USER --password $DOCKER_PASSWORD
+            docker tag boostpow-cpuminer proofofwork/boostpow-cpuminer:$CIRCLE_BRANCH
+            docker push proofofwork/boostpow-cpuminer:$CIRCLE_BRANCH
 
-jobs:
-  build_linux:
-    <<: *linuxBuildDefaults
-    steps:
-      - build_linux
-
-  release_linux:
-    <<: *linuxBuildDefaults
-    steps:
-      - build_linux
-      - setup_conan_remote_credentials
-      - upload_conan_package
 
 workflows:
-  build-and-release:
+  version: 2
+  build_and_deploy:
     jobs:
-      - build_linux:
-          filters:
-            tags:
-              only: /^v.*/
-      - release_linux:
-          requires:
-            - build_linux
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v.*/
+      - build_docker
