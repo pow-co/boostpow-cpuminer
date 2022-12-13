@@ -277,8 +277,6 @@ namespace BoostPOW {
         logger::log("job.selected", JSON {
             {"thread", JSON(i)},
             {"script_hash", BoostPOW::write(selected->first)},
-            {"difficulty", selected->second.difficulty()},
-            {"profitability", selected->second.profitability()},
             {"job", BoostPOW::to_JSON(selected->second)}
         });
         
@@ -333,9 +331,6 @@ namespace BoostPOW {
         
         auto redeem_tx = BoostPOW::redeem_puzzle(puzzle.second, solution, {Bitcoin::output{value - fee, pay_script}});
         
-        for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size() << std::endl;
-        for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
-        
         std::unique_lock<std::mutex> lock(Mutex);
         
         auto w = Jobs.find(puzzle.first);
@@ -348,9 +343,13 @@ namespace BoostPOW {
         
             if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
             
+            std::cout << "About to get workers and reassign them." << std::endl;
             auto workers = w->second.Workers;
+            std::cout << "Erasing completed job." << std::endl;
             Jobs.erase(w);
+            std::cout << "Rassigning workers." << std::endl;
             for (int i : workers) select_job(i);
+            std::cout << "Workers reassigned." << std::endl;
         }
         
     }
