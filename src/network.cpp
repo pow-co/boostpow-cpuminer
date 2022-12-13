@@ -175,8 +175,6 @@ satoshi_per_byte BoostPOW::network::mining_fee() {
     auto z = Gorilla.get_fee_quote();
     auto j = JSON(z);
     
-    std::cout << "Fee quote is " << j << std::endl;
-    
     return z.Fees["standard"].MiningFee;
 }
 

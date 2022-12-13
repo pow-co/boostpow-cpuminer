@@ -88,7 +88,7 @@ void pow_co::submit_proof(const Bitcoin::txid &txid) {
     std::stringstream path_stream;
     path_stream << "/api/v1/boost/proofs/" << hash_stream.str().substr(9, 64); 
     
-    auto request = this->Rest.POST(path_stream.str());
+    auto request = this->Rest.GET(path_stream.str());
     this->operator()(request);
 }
 
