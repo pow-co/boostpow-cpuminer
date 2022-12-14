@@ -69,8 +69,7 @@ namespace BoostPOW {
             if (accumulated_profitability >= random) return it;
         }
         
-        // shouldn't happen. 
-        return {};
+        throw exception{"Warning: random_select failed to select job. "};
     }
     
     JSON solution_to_JSON(work::solution x) {
@@ -260,7 +259,7 @@ namespace BoostPOW {
                     "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
             }
             
-            std::this_thread::sleep_for (std::chrono::seconds(900));
+            std::this_thread::sleep_for (std::chrono::seconds(90));
             
         }
     }
@@ -272,6 +271,7 @@ namespace BoostPOW {
     
     void manager::select_job(int i) {
         auto selected = random_select(Random, Jobs, MinProfitability);
+        if (selected == Jobs.end()) throw exception {"Warning: failed to select random worker."};
         selected->second.Workers = selected->second.Workers << i;
         
         logger::log("job.selected", JSON {
@@ -279,7 +279,7 @@ namespace BoostPOW {
             {"script_hash", BoostPOW::write(selected->first)},
             {"job", BoostPOW::to_JSON(selected->second)}
         });
-        
+        std::cout << "  reassigning worker " << i << std::endl;
         Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle>{selected->first, Boost::puzzle{selected->second, Keys.next()}});
     }
     
@@ -347,7 +347,7 @@ namespace BoostPOW {
             auto workers = w->second.Workers;
             std::cout << "Erasing completed job." << std::endl;
             Jobs.erase(w);
-            std::cout << "Rassigning workers." << std::endl;
+            std::cout << "Reassigning workers " << workers << std::endl;
             for (int i : workers) select_job(i);
             std::cout << "Workers reassigned." << std::endl;
         }
