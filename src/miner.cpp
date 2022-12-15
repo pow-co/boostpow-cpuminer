@@ -242,7 +242,7 @@ namespace BoostPOW {
         double minimum_profitability, int threads) : Mutex{}, 
         Net{net}, Fees{f}, Keys{keys}, Addresses{addresses}, 
         MaxDifficulty{maximum_difficulty}, MinProfitability{minimum_profitability}, 
-        Random{random_seed}, Jobs{}, Threads{threads}, Redeemers{ new redeemer*[Threads] } {
+        Random{random_seed}, Jobs{}, Threads{threads}, Redeemers{ new BoostPOW::redeemer*[Threads] } {
         
         std::cout << "starting " << threads << " threads." << std::endl;
         for (int i = 1; i <= threads; i++) Redeemers[i - 1] = new redeemer(this, random_seed + i, i);

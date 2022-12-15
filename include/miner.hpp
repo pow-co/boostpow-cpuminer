@@ -90,6 +90,7 @@ namespace BoostPOW {
     
     struct redeemer : virtual work::selector, virtual work::solver {
         redeemer() : work::selector{}, Mutex{}, Out{}, Current{} {}
+        virtual ~redeemer() {};
         
         void mine(const std::pair<digest256, Boost::puzzle> &p);
         
@@ -164,7 +165,7 @@ namespace BoostPOW {
         jobs Jobs;
         
         uint32 Threads;
-        redeemer **Redeemers;
+        BoostPOW::redeemer **Redeemers;
         
         void select_job(int i);
         
