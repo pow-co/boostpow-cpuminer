@@ -350,6 +350,36 @@ int command_redeem(int arg_count, char** arg_values) {
     return 0;
 }
 
+struct manager : BoostPOW::manager {
+    
+    struct local_redeemer final : BoostPOW::manager::redeemer, BoostPOW::channel {
+        std::thread Worker;
+        local_redeemer(
+            manager *m, 
+            uint64 random_seed, uint32 index) : 
+            manager::redeemer{m}, 
+            BoostPOW::channel{}, 
+            Worker{std::thread{BoostPOW::mining_thread, 
+                &static_cast<work::selector &>(*this), 
+                new BoostPOW::casual_random{random_seed}, index}} {}
+    };
+        
+    manager(
+        BoostPOW::network &net, 
+        BoostPOW::fees &f,
+        key_source &keys, 
+        address_source &addresses, 
+        uint64 random_seed, 
+        double maximum_difficulty, 
+        double minimum_profitability, int threads): 
+        BoostPOW::manager{net, f, keys, addresses, random_seed, maximum_difficulty, minimum_profitability} {
+        
+        std::cout << "starting " << threads << " threads." << std::endl;
+        for (int i = 1; i <= threads; i++) 
+            this->add_new_miner(ptr<BoostPOW::manager::redeemer>{new local_redeemer(this, random_seed + i, i)});
+    }
+};
+
 int command_mine(int arg_count, char** arg_values) {
     
     string key_string;
@@ -429,9 +459,9 @@ int command_mine(int arg_count, char** arg_values) {
         (BoostPOW::fees *)(new BoostPOW::network_fees(&Net)) : 
         (BoostPOW::fees *)(new BoostPOW::given_fees(fee_rate));
     
-    BoostPOW::manager{Net, *Fees, *signing_keys, *receiving_addresses, 
+    manager{Net, *Fees, *signing_keys, *receiving_addresses, 
         std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337, 
-        max_difficulty, min_profitability, threads};
+        max_difficulty, min_profitability, threads}.run();
     
     delete Fees;
     return 0;

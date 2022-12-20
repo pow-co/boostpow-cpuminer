@@ -116,21 +116,15 @@ namespace BoostPOW {
     
     struct manager {
         
-        struct redeemer final : BoostPOW::redeemer, BoostPOW::channel {
-            std::thread Worker;
+        struct redeemer : BoostPOW::redeemer {
             manager *Manager;
-            redeemer(
-                manager *m, 
-                uint64 random_seed, uint32 index) : 
-                BoostPOW::redeemer{}, 
-                BoostPOW::channel{}, 
-                Worker{std::thread{mining_thread, 
-                    &static_cast<work::selector &>(*this), 
-                    new casual_random{random_seed}, index}}, Manager{m} {}
+            redeemer(manager *m) : BoostPOW::redeemer{}, Manager{m} {}
             
             void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
                 Manager->submit(puzzle, solution);
             }
+            
+            virtual ~redeemer() {}
         };
         
         manager(
@@ -140,11 +134,15 @@ namespace BoostPOW {
             address_source &addresses, 
             uint64 random_seed, 
             double maximum_difficulty, 
-            double minimum_profitability, int threads);
+            double minimum_profitability);
+        
+        void run();
         
         void update_jobs(const BoostPOW::jobs &j);
         
-        ~manager();
+        int add_new_miner(ptr<redeemer>);
+        
+        virtual ~manager() {}
         
         void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &);
         
@@ -164,8 +162,7 @@ namespace BoostPOW {
         
         jobs Jobs;
         
-        uint32 Threads;
-        BoostPOW::redeemer **Redeemers;
+        std::vector<ptr<redeemer>> Redeemers;
         
         void select_job(int i);
         
