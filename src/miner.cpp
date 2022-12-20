@@ -59,7 +59,6 @@ namespace BoostPOW {
         
         double normalization = 0;
         for (const auto &p : j) normalization += p.second.weight(minimum_profitability, .025);
-        std::cout << "    random select: normalization is " << normalization << std::endl;
         if (normalization == 0) throw exception{"random_select: normalization is zero"};
         double random = r.range01() * normalization;
         
@@ -267,7 +266,7 @@ namespace BoostPOW {
     }
     
     void manager::select_job(int i) {
-        std::cout << "  about to reassign worker " << i << std::endl;
+        
         if (Jobs.size() == 0) throw exception{"Warning: jobs is empty"};
         auto selected = random_select(Random, Jobs, MinProfitability);
         if (selected == Jobs.end()) throw exception {"Warning: failed to select random worker."};
@@ -278,9 +277,9 @@ namespace BoostPOW {
             {"script_hash", BoostPOW::write(selected->first)},
             {"job", BoostPOW::to_JSON(selected->second)}
         });
-        std::cout << "  reassigning worker " << i << "; Redemers.size() = " << Redeemers.size() <<  std::endl;
+        
         Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle>{selected->first, Boost::puzzle{selected->second, Keys.next()}});
-        std::cout << "  worker " << i << " reassigned" << std::endl;
+        
     }
     
     void manager::update_jobs(const BoostPOW::jobs &j) {
