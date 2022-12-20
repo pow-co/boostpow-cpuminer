@@ -102,7 +102,8 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
                         {"inpoint", write(Bitcoin::outpoint{history_txid, ii++})}, 
                         {"script_hash", write(script_hash)}});
                     
-                    PowCo.submit_proof(history_txid);
+                    PowCo.submit_proof_GET(history_txid);
+                    PowCo.submit_proof_POST(history_txid);
                     break;
                 }
                 

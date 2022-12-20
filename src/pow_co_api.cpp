@@ -81,15 +81,24 @@ inpoint pow_co::spends(const Bitcoin::outpoint &outpoint) {
     
 }
 
-void pow_co::submit_proof(const Bitcoin::txid &txid) {
+void pow_co::submit_proof_GET(const Bitcoin::txid &txid) {
     std::stringstream hash_stream;
     hash_stream << txid;
     
     std::stringstream path_stream;
     path_stream << "/api/v1/boost/proofs/" << hash_stream.str().substr(9, 64); 
     
-    auto request = this->Rest.GET(path_stream.str());
-    this->operator()(request);
+    this->operator()(this->Rest.GET(path_stream.str()));
+}
+
+void pow_co::submit_proof_POST(const Bitcoin::txid &txid) {
+    std::stringstream hash_stream;
+    hash_stream << txid;
+    
+    std::stringstream path_stream;
+    path_stream << "/api/v1/boost/proofs/" << hash_stream.str().substr(9, 64); 
+    
+    this->operator()(this->Rest.POST(path_stream.str()));
 }
 
 void pow_co::submit_proof(const inpoint &x) {

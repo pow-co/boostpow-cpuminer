@@ -30,6 +30,13 @@ struct pow_co : networking::HTTP_client {
     
     bool broadcast(const bytes &);
     
+    void submit_proof_GET(const Bitcoin::txid &);
+    void submit_proof_POST(const Bitcoin::txid &);
+    
 };
+
+void inline pow_co::submit_proof(const Bitcoin::txid &tx) {
+    return submit_proof_GET(tx);
+}
 
 #endif
