@@ -65,9 +65,15 @@ namespace BoostPOW {
     
     struct network_fees : fees {
         network *Net;
-        network_fees(network *n) : Net{n} {}
+        double Default;
+        network_fees(network *n, double d = .05) : Net{n}, Default{d} {}
         double get() final override {
-            return double(Net->mining_fee());
+            try {
+                return double(Net->mining_fee());
+            } catch (std::exception &e) {
+                std::cout << "Warning! Exception caught while trying to get a fee quote: " << e.what() << std::endl;
+                return Default;
+            }
         }
     };
     

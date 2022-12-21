@@ -275,7 +275,9 @@ namespace BoostPOW {
         logger::log("job.selected", JSON {
             {"thread", JSON(i)},
             {"script_hash", BoostPOW::write(selected->first)},
-            {"job", BoostPOW::to_JSON(selected->second)}
+            {"value", int64(selected->second.value())}, 
+            {"profitability", selected->second.profitability()}, 
+            {"difficulty", selected->second.difficulty()}
         });
         
         Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle>{selected->first, Boost::puzzle{selected->second, Keys.next()}});
