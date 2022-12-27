@@ -11,11 +11,11 @@ struct test_case {
     
     std::string command();
     
-    std::string run();
+    std::optional<std::string> run();
     
     bool result() {
-        std::string r = run();
-        return ExpectedSuccess ? r == ExpectedOutput : r == "";
+        auto r = run();
+        return bool(r) ? ExpectedSuccess && *r == ExpectedOutput : !ExpectedSuccess;
     }
 };
 
@@ -29,9 +29,15 @@ TEST(DetectBoostTest, TestDetectBoost) {
         "hi", false, "", "should fail with an input that is not hex"
     }, {
         "ab", false, "", "should fail with an input that is not a Bitcoin transaction"
-    }/*, {
-        "should return false for an input with no boost outputs"
     }, {
+        "0100000001fc9b6c8e58016f9e36d29b2a20536bb3202dc304aeb1785ffa015de4f3732cc50e"
+        "0000006b483045022100e8eb4b41bd348201521b311a5048a7b192b8209db2c5bfbd1cbd0a6b"
+        "a541302c022044a80e8b8023e114d85acceeeca9757c9f048102de6ea7e210d61d919895e34e"
+        "412103af3ead8a3ab792225bf22262f0b81a72e5070788d363ee717c5868421b75a62dffffff"
+        "ff01000000000000000040006a0a6d793263656e74732c201c716e557631774f7a4d77505876"
+        "556e626e3169517054336344476e32152c20302e303134303735373231303439383133343600000000", 
+        true, "", "should return false for an input with no boost outputs"
+    }/*, {
         "should return true for a tx with a boost output in first position"
     }, {
         "should return true for a tx with a boost output in second position"
@@ -46,7 +52,7 @@ std::string test_case::command() {
     return std::string{"./bin/DetectBoost "} + Input; 
 }
     
-std::string test_case::run() {
+std::optional<std::string> test_case::run() {
     
     if (FILE *fp = popen(command().c_str(), "r"); fp != nullptr) {
     
@@ -54,12 +60,10 @@ std::string test_case::run() {
         
         std::string result;
         
-        while (fgets(buf, 128, fp) != NULL) {
-            // Do whatever you want here...
+        while (fgets(buf, 128, fp) != nullptr) 
             result += std::string{buf};
-        }
         
-        pclose(fp);
+        if (pclose(fp)) return {};
         return result;
         
     } else throw data::exception{"could not open pipe"};
