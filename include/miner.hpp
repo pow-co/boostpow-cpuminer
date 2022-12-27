@@ -121,7 +121,9 @@ namespace BoostPOW {
             redeemer(manager *m) : BoostPOW::redeemer{}, Manager{m} {}
             
             void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
+                std::cout << "  about to submit solution" << std::endl;
                 Manager->submit(puzzle, solution);
+                std::cout << "  solution submitted..." << std::endl;
             }
             
             virtual ~redeemer() {}

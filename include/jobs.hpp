@@ -3,9 +3,9 @@
 
 #include <gigamonkey/boost/boost.hpp>
 
-using namespace Gigamonkey;
-
 namespace BoostPOW {
+    using namespace Gigamonkey;
+
     using uint256 = Gigamonkey::uint256;
     
     struct working : Boost::candidate {

@@ -187,6 +187,7 @@ namespace BoostPOW {
                 if (proof.valid()) {
                     logger::log("solution found in thread", JSON(thread_number));
                     m->solved(proof.Solution);
+                    logger::log("solution submitted", JSON(thread_number));
                 }
                 
                 puzzle = m->select();

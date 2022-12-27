@@ -4,11 +4,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
 
-RUN apt-get -y install python3-pip build-essential git gcc-10 g++-10 cmake
+RUN apt-get -y install python3-pip build-essential git g++-11 cmake
 
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 20
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 20
 
-RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 20
+RUN update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 20
 
 RUN pip install conan
 
