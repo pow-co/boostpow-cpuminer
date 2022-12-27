@@ -14,7 +14,7 @@ class BoostMinerConan(ConanFile):
     default_options = {"shared": False, "fPIC": True}
     generators = "cmake"
     exports_sources = "src/*"
-    requires = "gigamonkey/v0.0.11@proofofwork/stable"
+    requires = "gigamonkey/v0.0.11@proofofwork/stable", "gtest/1.12.1"
 
     def config_options(self):
         if self.settings.os == "Windows":
@@ -27,4 +27,3 @@ class BoostMinerConan(ConanFile):
 
     def package(self):
         self.copy("BoostMiner", dst="bin", keep_path=False)
-        
