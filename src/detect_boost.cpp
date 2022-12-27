@@ -19,7 +19,7 @@ int main(int arg_count, char** args) {
         if (!tx.valid()) throw data::exception {"could not read transaction"};
         
         for (auto &o : tx.Outputs) if (Boost::output_script{o.Script}.valid()) {
-            std::cout << BoostPOW::write(tx.id()) << std::endl;
+            std::cout << BoostPOW::write(tx.id()).substr(2) << std::endl;
             return 0;
         }
         
