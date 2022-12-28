@@ -435,13 +435,13 @@ int command_mine(int arg_count, char** arg_values) {
     else if (hd_key.valid()) signing_keys = 
         std::static_pointer_cast<key_source>(std::make_shared<HD::key_source>(hd_key));
     else throw string{"could not read signing key"};
-    
+
     if (address_string == "") {
         if (key.valid()) receiving_addresses = 
             std::static_pointer_cast<address_source>(std::make_shared<single_address_source>(key.address()));
         else if (hd_key.valid()) receiving_addresses = 
             std::static_pointer_cast<address_source>(std::make_shared<HD::address_source>(hd_key.to_public()));
-        else throw string{"could not read signing key"};
+        else throw string{"could not read receiving address"};
     } else {
         Bitcoin::address address{address_string};
         HD::BIP_32::pubkey hd_pubkey{address_string};
@@ -450,7 +450,7 @@ int command_mine(int arg_count, char** arg_values) {
             std::static_pointer_cast<address_source>(std::make_shared<single_address_source>(address));
         else if (hd_pubkey.valid()) receiving_addresses = 
             std::static_pointer_cast<address_source>(std::make_shared<HD::address_source>(hd_pubkey));
-        else throw string{"could not read signing key"};
+        else throw string{"could not read receiving address"};
     }
     std::cout << "about to start running" << std::endl;
     BoostPOW::network Net{};
