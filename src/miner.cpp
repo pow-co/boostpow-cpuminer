@@ -59,7 +59,7 @@ namespace BoostPOW {
         
         double normalization = 0;
         for (const auto &p : j) normalization += p.second.weight(minimum_profitability, .025);
-        if (normalization == 0) throw exception{"random_select: normalization is zero"};
+        if (normalization == 0) return j.end();
         double random = r.range01() * normalization;
         
         double accumulated_profitability = 0;
@@ -175,28 +175,28 @@ namespace BoostPOW {
     void mining_thread (work::selector *m, random *r, uint32 thread_number) {
         logger::log("begin thread", JSON(thread_number));
         try {
-            work::puzzle puzzle{};
+            work::puzzle puzzle {};
             
             while (true) {
                 
-                puzzle = m->select();
+                puzzle = m->select ();
                 
-                if (!puzzle.valid()) break;
+                if (!puzzle.valid ()) continue;
                 
-                work::proof proof = solve(*r, puzzle, 10);
-                if (proof.valid()) {
-                    logger::log("solution found in thread", JSON(thread_number));
-                    m->solved(proof.Solution);
-                    logger::log("solution submitted", JSON(thread_number));
+                work::proof proof = solve (*r, puzzle, 10);
+                if (proof.valid ()) {
+                    logger::log ("solution found in thread", JSON (thread_number));
+                    m->solved (proof.Solution);
+                    logger::log ("solution submitted", JSON (thread_number));
                 }
                 
-                puzzle = m->select();
+                puzzle = m->select ();
             }
         } catch (const string &x) {
             std::cout << "Error " << x << std::endl;
         }
         
-        logger::log("end thread", JSON(thread_number));
+        logger::log ("end thread", JSON (thread_number));
         delete r;
     }
     
@@ -215,23 +215,24 @@ namespace BoostPOW {
         for (auto &thread : Workers) thread.join();
     }
     
-    void redeemer::solved(const work::solution &solution) {
+    void redeemer::solved (const work::solution &solution) {
         // shouldn't happen
-        if (!solution.valid()) return;
+        if (!solution.valid ()) return;
         
-        if (work::proof{work::puzzle(Current.second), solution}.valid()) submit(Current, solution);
+        if (work::proof {work::puzzle(Current.second), solution}.valid()) submit(Current, solution);
         
-        if (work::proof{work::puzzle(Last.second), solution}.valid()) submit(Last, solution);
+        if (work::proof {work::puzzle(Last.second), solution}.valid()) submit(Last, solution);
     }
     
-    void redeemer::mine(const std::pair<digest256, Boost::puzzle> &p) {
+    void redeemer::mine (const std::pair<digest256, Boost::puzzle> &p) {
         std::unique_lock<std::mutex> lock(Mutex);
         if (Last == std::pair<digest256, Boost::puzzle>{}) Last = Current;
         Current = p;
-        this->pose(work::puzzle(Current.second));
+        if (Current.second.valid ()) this->pose (work::puzzle (Current.second));
+        else this->pose (work::puzzle {});
     }
     
-    manager::manager(
+    manager::manager (
         network &net, 
         fees &f,
         key_source &keys, 
@@ -266,22 +267,31 @@ namespace BoostPOW {
         }
     }
     
-    void manager::select_job(int i) {
+    void manager::select_job (int i) {
         
-        if (Jobs.size() == 0) throw exception{"Warning: jobs is empty"};
-        auto selected = random_select(Random, Jobs, MinProfitability);
-        if (selected == Jobs.end()) throw exception {"Warning: failed to select random worker."};
-        selected->second.Workers = selected->second.Workers << i;
-        
-        logger::log("job.selected", JSON {
-            {"thread", JSON(i)},
-            {"script_hash", BoostPOW::write(selected->first)},
-            {"value", int64(selected->second.value())}, 
-            {"profitability", selected->second.profitability()}, 
-            {"difficulty", selected->second.difficulty()}
-        });
-        
-        Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle>{selected->first, Boost::puzzle{selected->second, Keys.next()}});
+        if (Jobs.size() == 0) throw exception {"Warning: jobs is empty"};
+        auto selected = random_select (Random, Jobs, MinProfitability);
+        if (selected == Jobs.end ()) {
+
+            logger::log("worker.resting", JSON {
+                {"thread", JSON (i)}
+            });
+
+            Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle> {});
+
+        } else {
+            selected->second.Workers = selected->second.Workers << i;
+
+            logger::log("job.selected", JSON {
+                {"thread", JSON (i)},
+                {"script_hash", BoostPOW::write (selected->first)},
+                {"value", int64(selected->second.value ())},
+                {"profitability", selected->second.profitability()},
+                {"difficulty", selected->second.difficulty ()}
+            });
+
+            Redeemers[i - 1]->mine(std::pair<digest256, Boost::puzzle> {selected->first, Boost::puzzle {selected->second, Keys.next()}});
+        }
         
     }
     
