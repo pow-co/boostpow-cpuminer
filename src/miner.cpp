@@ -181,7 +181,10 @@ namespace BoostPOW {
                 
                 puzzle = m->select ();
                 
-                if (!puzzle.valid ()) continue;
+                if (!puzzle.valid ()) {
+                    logger::log ("waiting in thread", JSON (thread_number));
+                    continue;
+                }
                 
                 work::proof proof = solve (*r, puzzle, 10);
                 if (proof.valid ()) {

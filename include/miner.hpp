@@ -48,26 +48,26 @@ namespace BoostPOW {
         std::condition_variable In;
         
         work::puzzle Puzzle;
-        bool Set;
+        bool Valid;
         
         void pose(const work::puzzle &p) final override {
             std::unique_lock<std::mutex> lock(Mutex);
             
             Puzzle = p;
-            Set = true;
+            Valid = p.valid();
             
-            In.notify_all();
+            if (Valid) In.notify_all();
         }
         
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
         work::puzzle select() final override {
             std::unique_lock<std::mutex> lock(Mutex);
-            if (!Set) In.wait(lock);
+            if (!Valid) In.wait(lock);
             return Puzzle;
         }
         
-        channel() : Mutex{}, In{}, Puzzle{}, Set{false} {}
+        channel() : Mutex{}, In{}, Puzzle{}, Valid{false} {}
         
     };
     
@@ -121,9 +121,7 @@ namespace BoostPOW {
             redeemer(manager *m) : BoostPOW::redeemer{}, Manager{m} {}
             
             void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
-                std::cout << "  about to submit solution" << std::endl;
                 Manager->submit(puzzle, solution);
-                std::cout << "  solution submitted..." << std::endl;
             }
             
             virtual ~redeemer() {}
