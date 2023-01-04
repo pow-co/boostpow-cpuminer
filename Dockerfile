@@ -4,7 +4,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
 
-RUN apt-get -y install python3-pip build-essential git g++-11 cmake
+RUN apt-get -y install python3-pip build-essential manpages-dev software-properties-common git cmake
+
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+
+RUN apt-get update && apt-get -y install gcc-11 g++-11
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 20
 
