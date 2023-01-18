@@ -149,7 +149,11 @@ namespace BoostPOW {
         // provide the script hash to notify the miner of a completed job. All workers will be reassigned.
         void solved_job (const digest256 &);
 
-        void new_job (const Boost::output &);
+        // notify of a new job.
+        void new_job (const Boost::prevout &);
+
+        // select a new job for all mining threads.
+        void reassign_workers ();
         
     private:
         std::mutex Mutex;
@@ -172,6 +176,14 @@ namespace BoostPOW {
         void select_job (int i);
         
     };
+
+    void inline manager::new_job (const Boost::prevout &p) {
+        Jobs.add_prevout (Jobs.add_script (p.script ()), p);
+    }
+
+    void inline manager::reassign_workers () {
+        for (int i = 1; i <= Redeemers.size (); i++) select_job (i);
+    }
     
 }
 

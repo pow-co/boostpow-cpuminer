@@ -326,9 +326,8 @@ namespace BoostPOW {
         viable_jobs << " jobs remaining " << std::endl;
         
         if (viable_jobs == 0) return;
-        
-        // select a new job for all mining threads. 
-        for (int i = 1; i <= Redeemers.size (); i++) select_job(i);
+
+        reassign_workers();
     }
     
     void manager::submit (const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) {
