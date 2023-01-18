@@ -11,7 +11,7 @@
 
 namespace BoostPOW {
     
-    Bitcoin::transaction mine(
+    Bitcoin::transaction mine (
         random &, 
         // an unredeemed Boost PoW output 
         const Boost::puzzle &puzzle, 
@@ -39,9 +39,9 @@ namespace BoostPOW {
 
     }
     
-    Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
+    Bitcoin::transaction redeem_puzzle (const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
 
-    void mining_thread(work::selector *, random *, uint32);
+    void mining_thread (work::selector *, random *, uint32);
     
     struct channel : virtual work::selector, virtual work::solver {
         std::mutex Mutex;
@@ -50,54 +50,54 @@ namespace BoostPOW {
         work::puzzle Puzzle;
         bool Valid;
         
-        void pose(const work::puzzle &p) final override {
-            std::unique_lock<std::mutex> lock(Mutex);
+        void pose (const work::puzzle &p) final override {
+            std::unique_lock<std::mutex> lock (Mutex);
             
             Puzzle = p;
-            Valid = p.valid();
+            Valid = p.valid ();
             
-            if (Valid) In.notify_all();
+            if (Valid) In.notify_all ();
         }
         
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        work::puzzle select() final override {
-            std::unique_lock<std::mutex> lock(Mutex);
-            if (!Valid) In.wait(lock);
+        work::puzzle select () final override {
+            std::unique_lock<std::mutex> lock (Mutex);
+            if (!Valid) In.wait (lock);
             return Puzzle;
         }
         
-        channel() : Mutex{}, In{}, Puzzle{}, Valid{false} {}
+        channel () : Mutex {}, In {}, Puzzle {}, Valid {false} {}
         
     };
     
     struct multithreaded : channel {
-        multithreaded(
+        multithreaded (
             uint32 threads, uint64 random_seed) :
-            Threads{threads}, Seed{random_seed}, Workers{} {}
+            Threads {threads}, Seed {random_seed}, Workers {} {}
         
-        virtual ~multithreaded();
+        virtual ~multithreaded ();
         
         uint32 Threads; 
         uint64 Seed;
         
         // start threads if not already. 
-        void start_threads();
+        void start_threads ();
         
     private:
         std::vector<std::thread> Workers;
     };
     
     struct redeemer : virtual work::selector, virtual work::solver {
-        redeemer() : work::selector{}, Mutex{}, Out{}, Current{} {}
-        virtual ~redeemer() {};
+        redeemer () : work::selector {}, Mutex {}, Out {}, Current {} {}
+        virtual ~redeemer () {};
         
-        void mine(const std::pair<digest256, Boost::puzzle> &p);
+        void mine (const std::pair<digest256, Boost::puzzle> &p);
         
-        void wait_for_solution() {
-            std::unique_lock<std::mutex> lock(Mutex);
+        void wait_for_solution () {
+            std::unique_lock<std::mutex> lock (Mutex);
             if (Solved) return;
-            Out.wait(lock);
+            Out.wait (lock);
         }
         
     protected:
@@ -109,22 +109,22 @@ namespace BoostPOW {
         
         bool Solved;
         
-        void solved(const work::solution &) override;
+        void solved (const work::solution &) override;
         
-        virtual void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &) = 0;
+        virtual void submit (const std::pair<digest256, Boost::puzzle> &, const work::solution &) = 0;
     };
     
     struct manager {
         
         struct redeemer : BoostPOW::redeemer {
             manager *Manager;
-            redeemer(manager *m) : BoostPOW::redeemer{}, Manager{m} {}
+            redeemer (manager *m) : BoostPOW::redeemer {}, Manager {m} {}
             
-            void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
-                Manager->submit(puzzle, solution);
+            void submit (const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
+                Manager->submit (puzzle, solution);
             }
             
-            virtual ~redeemer() {}
+            virtual ~redeemer () {}
         };
         
         manager(
@@ -136,15 +136,20 @@ namespace BoostPOW {
             double maximum_difficulty, 
             double minimum_profitability);
         
-        void run();
+        void run ();
         
-        void update_jobs(const BoostPOW::jobs &j);
+        void update_jobs (const BoostPOW::jobs &j);
         
-        int add_new_miner(ptr<redeemer>);
+        int add_new_miner (ptr<redeemer>);
         
-        virtual ~manager() {}
+        virtual ~manager () {}
         
-        void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &);
+        void submit (const std::pair<digest256, Boost::puzzle> &, const work::solution &);
+
+        // provide the script hash to notify the miner of a completed job. All workers will be reassigned.
+        void solved_job (const digest256 &);
+
+        void new_job (const Boost::output &);
         
     private:
         std::mutex Mutex;
@@ -164,7 +169,7 @@ namespace BoostPOW {
         
         std::vector<ptr<redeemer>> Redeemers;
         
-        void select_job(int i);
+        void select_job (int i);
         
     };
     

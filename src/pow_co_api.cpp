@@ -1,12 +1,12 @@
 #include <pow_co_api.hpp>
 
-Boost::prevout read_job(const JSON &job, 
+Boost::prevout read_job (const JSON &job,
     networking::HTTP::request &request, 
     networking::HTTP::response &response) {
     
-    uint32 index{job.at("vout")};
+    uint32 index {job.at("vout")};
     
-    int64 value{job.at("value")};
+    int64 value {job.at("value")};
     
     digest256 txid{string{"0x"} + string(job.at("txid"))};
     if (!txid.valid()) throw networking::HTTP::exception{request, response, "cannot read txid"};
@@ -16,12 +16,12 @@ Boost::prevout read_job(const JSON &job,
         throw networking::HTTP::exception{request, response, "script should be in hex format"};
     
     Boost::output_script script{*script_bytes};
-    if (!script.valid()) 
+    if (!script.valid ())
         throw networking::HTTP::exception{request, response, "invalid boost script"};
     
-    return Boost::prevout{
-        Bitcoin::outpoint{txid, index}, 
-        Boost::output{Bitcoin::satoshi{value}, script}};
+    return Boost::prevout {
+        Bitcoin::outpoint {txid, index},
+        Boost::output {Bitcoin::satoshi {value}, script}};
 }
 
 list<Boost::prevout> pow_co::jobs(uint32 limit) {
@@ -86,9 +86,9 @@ void pow_co::submit_proof_GET(const Bitcoin::txid &txid) {
     hash_stream << txid;
     
     std::stringstream path_stream;
-    path_stream << "/api/v1/boost/proofs/" << hash_stream.str().substr(9, 64); 
-    
-    this->operator()(this->Rest.GET(path_stream.str()));
+    path_stream << "/api/v1/boost/proofs/" << hash_stream.str ().substr (9, 64);
+    std::cout << "==== calling " << path_stream.str () << std::endl;
+    this->operator()(this->Rest.GET (path_stream.str ()));
 }
 
 void pow_co::submit_proof_POST(const Bitcoin::txid &txid) {
@@ -98,7 +98,7 @@ void pow_co::submit_proof_POST(const Bitcoin::txid &txid) {
     std::stringstream path_stream;
     path_stream << "/api/v1/boost/proofs/" << hash_stream.str().substr(9, 64); 
     
-    this->operator()(this->Rest.POST(path_stream.str()));
+    this->operator()(this->Rest.POST (path_stream.str ()));
 }
 
 void pow_co::submit_proof(const inpoint &x) {
@@ -106,9 +106,9 @@ void pow_co::submit_proof(const inpoint &x) {
     hash_stream << x.Digest;
     
     std::stringstream path_stream;
-    path_stream << "/api/v1/boost/proofs/" << hash_stream.str().substr(9, 64) << "_i" << x.Index; 
+    path_stream << "/api/v1/boost/proofs/" << hash_stream.str ().substr(9, 64) << "_i" << x.Index;
     
-    auto request = this->Rest.POST(path_stream.str());
+    auto request = this->Rest.POST (path_stream.str ());
     this->operator()(request);
 }
 
@@ -116,14 +116,14 @@ bool pow_co::broadcast(const bytes &tx) {
     
     auto request = this->Rest.POST("/api/v1/transactions", 
         {{networking::HTTP::header::content_type, "application/JSON"}}, 
-        JSON{{"transaction", encoding::hex::write(tx)}}.dump());
+        JSON{{"transaction", encoding::hex::write (tx)}}.dump ());
     
-    auto response = (*this)(request);
+    auto response = (*this) (request);
     
-    if (static_cast<unsigned int>(response.Status) >= 500) 
-        throw networking::HTTP::exception{request, response, string{"problem reading txid."}};
+    if (static_cast<unsigned int> (response.Status) >= 500)
+        throw networking::HTTP::exception {request, response, string{"problem reading txid."}};
     
-    if (static_cast<unsigned int>(response.Status) != 200) {
+    if (static_cast<unsigned int> (response.Status) != 200) {
         std::cout << "pow co returns response code " << response.Status << std::endl;
         return false;
     }
