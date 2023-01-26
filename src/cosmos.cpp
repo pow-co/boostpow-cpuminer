@@ -13,7 +13,7 @@ int command_generate(int arg_count, char** arg_values) {
     
     std::cout << "Type random characters and we will generate a wallet for you. Press enter when you think you have enough." << std::endl;
     
-    std::string user_input{};
+    std::string user_input {};
     
     while(true) {
         char x = std::cin.get();
@@ -175,7 +175,8 @@ int command_boost(int arg_count, char** arg_values) {
     
     if (boost_output_index == spend.Transaction.Outputs.size()) throw data::exception {"could not find boost output index"};
     
-    BoostPOW::network net{};
+    boost::asio::io_context io {};
+    BoostPOW::network net {io};
     
     net.broadcast(bytes(spend.Transaction));
     

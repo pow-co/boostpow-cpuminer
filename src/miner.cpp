@@ -333,36 +333,38 @@ namespace BoostPOW {
     
     void manager::submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) {
         
-        std::unique_lock<std::mutex> lock(Mutex);
-        double fee_rate {Fees.get()};
+        std::unique_lock<std::mutex> lock (Mutex);
+        double fee_rate {Fees.get ()};
         
-        auto value = puzzle.second.value();
-        bytes pay_script = pay_to_address::script(Addresses.next().Digest);
-        auto expected_inputs_size = puzzle.second.expected_size();
-        auto estimated_size = BoostPOW::estimate_size(expected_inputs_size, pay_script.size());
+        auto value = puzzle.second.value ();
+        bytes pay_script = pay_to_address::script (Addresses.next ().Digest);
+        auto expected_inputs_size = puzzle.second.expected_size ();
+        auto estimated_size = BoostPOW::estimate_size (expected_inputs_size, pay_script.size ());
         
         Bitcoin::satoshi fee {int64(ceil(fee_rate * estimated_size))};
         
         if (fee > value) throw string {"Cannot pay tx fee with boost output"};
         
-        auto redeem_tx = BoostPOW::redeem_puzzle(puzzle.second, solution, {Bitcoin::output{value - fee, pay_script}});
+        auto redeem_tx = BoostPOW::redeem_puzzle (puzzle.second, solution, {Bitcoin::output{value - fee, pay_script}});
         
-        auto w = Jobs.find(puzzle.first);
-        if (w != Jobs.end()) {
+        auto w = Jobs.find (puzzle.first);
+        if (w != Jobs.end ()) {
+
+            auto redeem_bytes = bytes (redeem_tx);
             
             logger::log("job.complete.transaction", JSON {
                 {"txid", BoostPOW::write(redeem_tx.id())}, 
-                {"txhex", encoding::hex::write(bytes(redeem_tx))}
+                {"txhex", encoding::hex::write(redeem_bytes)}
             });
         
-            if (!Net.broadcast(bytes(redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+            if (!Net.broadcast_solution (redeem_bytes)) std::cout << "broadcast failed!" << std::endl;
             
             std::cout << "About to get workers and reassign them." << std::endl;
             auto workers = w->second.Workers;
             std::cout << "Erasing completed job." << std::endl;
-            Jobs.erase(w);
+            Jobs.erase (w);
             std::cout << "Reassigning workers " << workers << std::endl;
-            for (int i : workers) select_job(i);
+            for (int i : workers) select_job (i);
             std::cout << "Workers reassigned." << std::endl;
         }
         
