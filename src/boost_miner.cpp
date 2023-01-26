@@ -277,8 +277,9 @@ int command_redeem(int arg_count, char** arg_values) {
         std::cout << options_redeem << std::endl;
         return 1;
     }
-    
-    BoostPOW::network Net{};
+
+    boost::asio::io_context io {};
+    BoostPOW::network Net {io};
     
     Boost::output_script boost_script;
     if (script_string != "") {
@@ -305,7 +306,7 @@ int command_redeem(int arg_count, char** arg_values) {
     else address = Bitcoin::address{address_string};
     if (!address.valid()) throw data::exception{} << "could not read address" << address_string;
     
-    Boost::candidate Job{};
+    Boost::candidate Job {};
     
     if (value < 0 || script_string == "") {
         Job = Net.job(Bitcoin::outpoint{txid, index});
@@ -340,11 +341,11 @@ int command_redeem(int arg_count, char** arg_values) {
       {"recipient", address.write()}
     });
     
-    redeemer r{Net, *Fees, address, threads, std::chrono::system_clock::now().time_since_epoch().count() * 5090567 + 337};
+    redeemer r {Net, *Fees, address, threads, std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337};
     
-    r.mine({Job.id(), Boost::puzzle{Job, key}});
+    r.mine ({Job.id (), Boost::puzzle {Job, key}});
     
-    r.wait_for_solution();
+    r.wait_for_solution ();
     
     delete Fees;
     return 0;
@@ -354,11 +355,11 @@ struct manager : BoostPOW::manager {
     
     struct local_redeemer final : BoostPOW::manager::redeemer, BoostPOW::channel {
         std::thread Worker;
-        local_redeemer(
+        local_redeemer (
             manager *m, 
             uint64 random_seed, uint32 index) : 
-            manager::redeemer{m}, 
-            BoostPOW::channel{}, 
+            manager::redeemer {m},
+            BoostPOW::channel {},
             Worker{std::thread{BoostPOW::mining_thread, 
                 &static_cast<work::selector &>(*this), 
                 new BoostPOW::casual_random{random_seed}, index}} {}
@@ -452,8 +453,11 @@ int command_mine(int arg_count, char** arg_values) {
             std::static_pointer_cast<address_source>(std::make_shared<HD::address_source>(hd_pubkey));
         else throw string{"could not read receiving address"};
     }
+
     std::cout << "about to start running" << std::endl;
-    BoostPOW::network Net{};
+
+    boost::asio::io_context io {};
+    BoostPOW::network Net {io};
     
     BoostPOW::fees *Fees = fee_rate < 0 ? 
         (BoostPOW::fees *)(new BoostPOW::network_fees(&Net)) : 
