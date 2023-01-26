@@ -17,7 +17,8 @@ namespace BoostPOW {
         pow_co PowCo;
         BitcoinAssociation::MAPI Gorilla;
         
-        network(boost::asio::io_context &io) : IO {io}, HTTP {IO}, WhatsOnChain {HTTP}, PowCo {HTTP},
+        network(boost::asio::io_context &io, string api_host = "pow.co") :
+            IO {io}, HTTP {IO}, WhatsOnChain {HTTP}, PowCo {HTTP, api_host},
             Gorilla {HTTP, networking::REST {"https", "mapi.gorillapool.io"}} {}
         
         BoostPOW::jobs jobs (uint32 limit = 10);

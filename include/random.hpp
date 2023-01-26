@@ -15,67 +15,67 @@ namespace BoostPOW {
     
     struct random {
         
-        virtual double range01() = 0;
+        virtual double range01 () = 0;
 
-        virtual data::uint64 uint64() = 0;
+        virtual data::uint64 uint64 () = 0;
 
-        virtual data::uint32 uint32() = 0;
+        virtual data::uint32 uint32 () = 0;
 
-        virtual bool boolean() = 0;
+        virtual bool boolean () = 0;
         
-        virtual ~random() {}
+        virtual ~random () {}
         
     };
     
     template <typename engine>
     struct std_random : random {
     
-        static double range01(engine& gen) {    
-            return std::uniform_real_distribution<double>{0.0, 1.0}(gen);
+        static double range01 (engine& gen) {
+            return std::uniform_real_distribution<double> {0.0, 1.0} (gen);
         }
 
-        static data::uint64 uint64(engine& gen) {
-            return std::uniform_int_distribution<data::uint64>{
-                std::numeric_limits<data::uint64>::min(),
-                std::numeric_limits<data::uint64>::max()
+        static data::uint64 uint64 (engine& gen) {
+            return std::uniform_int_distribution<data::uint64> {
+                std::numeric_limits<data::uint64>::min (),
+                std::numeric_limits<data::uint64>::max ()
             }(gen);
         }
 
-        static data::uint32 uint32(engine& gen) {
-            return std::uniform_int_distribution<data::uint32>{
-                std::numeric_limits<data::uint32>::min(), 
-                std::numeric_limits<data::uint32>::max()}(gen);
+        static data::uint32 uint32 (engine& gen) {
+            return std::uniform_int_distribution<data::uint32> {
+                std::numeric_limits<data::uint32>::min (),
+                std::numeric_limits<data::uint32>::max ()} (gen);
         }
 
-        static bool boolean(engine& gen) {
-            return static_cast<bool>(std::uniform_int_distribution<data::uint32>{0, 1}(gen));
+        static bool boolean (engine& gen) {
+            return static_cast<bool> (std::uniform_int_distribution<data::uint32> {0, 1} (gen));
         }
         
         engine Engine;
         
-        double range01() override {    
-            return range01(Engine);
+        double range01 () override {
+            return range01 (Engine);
         }
 
-        data::uint64 uint64() override {
-            return uint64(Engine);
+        data::uint64 uint64 () override {
+            return uint64 (Engine);
         }
 
-        data::uint32 uint32() override {
-            return uint32(Engine);
+        data::uint32 uint32 () override {
+            return uint32 (Engine);
         }
 
-        bool boolean() override {
-            return boolean(Engine);
+        bool boolean () override {
+            return boolean (Engine);
         }
         
-        std_random() : std_random{std::chrono::system_clock::now().time_since_epoch().count()} {}
-        std_random(data::uint64 seed);
+        std_random () : std_random {std::chrono::system_clock::now ().time_since_epoch ().count ()} {}
+        std_random (data::uint64 seed);
 
     };
 
-    template <> inline std_random<std::default_random_engine>::std_random(data::uint64 seed) : Engine{} {
-        Engine.seed(seed);
+    template <> inline std_random<std::default_random_engine>::std_random (data::uint64 seed) : Engine {} {
+        Engine.seed (seed);
     }
 
     using casual_random = std_random<std::default_random_engine>;
@@ -85,28 +85,28 @@ namespace BoostPOW {
         std_random<engine> Random;
         std::mutex Mutex;
         
-        double range01() override {
-            std::lock_guard<std::mutex> Lock(Mutex);
-            return Random.range01();
+        double range01 () override {
+            std::lock_guard<std::mutex> Lock (Mutex);
+            return Random.range01 ();
         }
 
-        data::uint64 uint64() override {
-            std::lock_guard<std::mutex> Lock(Mutex);
-            return Random.uint64();
+        data::uint64 uint64 () override {
+            std::lock_guard<std::mutex> Lock (Mutex);
+            return Random.uint64 ();
         }
 
-        data::uint32 uint32() override {
-            std::lock_guard<std::mutex> Lock(Mutex);
-            return Random.uint32();
+        data::uint32 uint32 () override {
+            std::lock_guard<std::mutex> Lock (Mutex);
+            return Random.uint32 ();
         }
 
-        bool boolean() override {
-            std::lock_guard<std::mutex> Lock(Mutex);
-            return Random.boolean();
+        bool boolean () override {
+            std::lock_guard<std::mutex> Lock (Mutex);
+            return Random.boolean ();
         }
         
-        random_threadsafe() : random{} {}
-        random_threadsafe(data::uint64 seed) : random{seed} {}
+        random_threadsafe () : random{} {}
+        random_threadsafe (data::uint64 seed) : random {seed} {}
 
     };
     

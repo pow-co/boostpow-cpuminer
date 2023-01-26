@@ -8,7 +8,7 @@ using nlohmann::json;
 
 namespace logger {
 
-  void log(std::string event, json j);
+  void log (std::string event, json j);
 
 }
 

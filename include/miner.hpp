@@ -11,7 +11,7 @@
 
 namespace BoostPOW {
     
-    Bitcoin::transaction mine(
+    Bitcoin::transaction mine (
         random &, 
         // an unredeemed Boost PoW output 
         const Boost::puzzle &puzzle, 
@@ -89,15 +89,15 @@ namespace BoostPOW {
     };
     
     struct redeemer : virtual work::selector, virtual work::solver {
-        redeemer() : work::selector{}, Mutex{}, Out{}, Current{} {}
+        redeemer() : work::selector {}, Mutex {}, Out {}, Current {} {}
         virtual ~redeemer() {};
         
         void mine(const std::pair<digest256, Boost::puzzle> &p);
         
-        void wait_for_solution() {
-            std::unique_lock<std::mutex> lock(Mutex);
+        void wait_for_solution () {
+            std::unique_lock<std::mutex> lock (Mutex);
             if (Solved) return;
-            Out.wait(lock);
+            Out.wait (lock);
         }
         
     protected:
@@ -109,25 +109,25 @@ namespace BoostPOW {
         
         bool Solved;
         
-        void solved(const work::solution &) override;
+        void solved (const work::solution &) override;
         
-        virtual void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &) = 0;
+        virtual void submit (const std::pair<digest256, Boost::puzzle> &, const work::solution &) = 0;
     };
     
     struct manager {
         
         struct redeemer : BoostPOW::redeemer {
             manager *Manager;
-            redeemer(manager *m) : BoostPOW::redeemer{}, Manager{m} {}
+            redeemer (manager *m) : BoostPOW::redeemer {}, Manager {m} {}
             
-            void submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
+            void submit (const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
                 Manager->submit(puzzle, solution);
             }
             
-            virtual ~redeemer() {}
+            virtual ~redeemer () {}
         };
         
-        manager(
+        manager (
             network &net, 
             fees &f,
             key_source &keys, 
@@ -136,15 +136,15 @@ namespace BoostPOW {
             double maximum_difficulty, 
             double minimum_profitability);
         
-        void run();
+        void run ();
         
-        void update_jobs(const BoostPOW::jobs &j);
+        void update_jobs (const BoostPOW::jobs &j);
         
-        int add_new_miner(ptr<redeemer>);
+        int add_new_miner (ptr<redeemer>);
         
-        virtual ~manager() {}
+        virtual ~manager () {}
         
-        void submit(const std::pair<digest256, Boost::puzzle> &, const work::solution &);
+        void submit (const std::pair<digest256, Boost::puzzle> &, const work::solution &);
         
     private:
         std::mutex Mutex;
@@ -164,7 +164,7 @@ namespace BoostPOW {
         
         std::vector<ptr<redeemer>> Redeemers;
         
-        void select_job(int i);
+        void select_job (int i);
         
     };
     
