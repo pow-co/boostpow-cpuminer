@@ -3,7 +3,7 @@ from conans import ConanFile, CMake
 
 class BoostMinerConan(ConanFile):
     name = "BoostMiner"
-    version = "0.2.4"
+    version = "0.2.5"
     license = "Proprietary"
     author = "Proof of Work Company"
     url = "https://github.com/ProofOfWorkCompany/BoostMiner"
@@ -14,7 +14,7 @@ class BoostMinerConan(ConanFile):
     default_options = {"shared": False, "fPIC": True}
     generators = "cmake"
     exports_sources = "src/*"
-    requires = "gigamonkey/v0.0.11@proofofwork/stable", "gtest/1.12.1"
+    requires = "argh/1.3.2", "gigamonkey/v0.0.11@proofofwork/stable", "gtest/1.12.1"
 
     def config_options(self):
         if self.settings.os == "Windows":
