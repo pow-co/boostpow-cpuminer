@@ -65,7 +65,7 @@ int spend (const BoostPOW::script_options &options) {
             {"miner", string (*options.MinerAddress)},
             {"script", {
                 {"asm", Bitcoin::ASM (output_script_bytes)},
-                {"hex", output_script_bytes}
+                {"hex", encoding::hex::write (output_script_bytes)}
             }}
         });
     } else {
@@ -86,7 +86,7 @@ int spend (const BoostPOW::script_options &options) {
             {"content", BoostPOW::write (options.Content)},
             {"script", {
                 {"asm", Bitcoin::ASM (output_script_bytes)},
-                {"hex", output_script_bytes}
+                {"hex", encoding::hex::write (output_script_bytes)}
             }}
         });
     }
@@ -160,10 +160,10 @@ int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &scrip
 
     Boost::output_script boost_script {};
     
-    if (value < 0 || !script.valid ()) {
+    if (value <= 0 || !script.valid ()) {
         Job = Net.job (outpoint);
         
-        if (value < 0) value = Job.value ();
+        if (value <= 0) value = Job.value ();
         else if (value != Job.value ()) throw data::exception {"User provided value is incorrect"};
         
         if (!script.valid ()) boost_script = Job.Script;
