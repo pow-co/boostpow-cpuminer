@@ -48,14 +48,14 @@ namespace BoostPOW {
 
     }
 
-    mining_options read_mining_options (const argh::parser &command_line, int arg_position) {
+    mining_options read_mining_options (const argh::parser &command_line, int secret_position, int address_position) {
 
         mining_options options;
 
         string secret_string;
-        if (auto positional = command_line (arg_position); positional) positional >> secret_string;
+        if (auto positional = command_line (secret_position); positional) positional >> secret_string;
         else if (auto option_wif = command_line ("wif"); option_wif) option_wif >> secret_string;
-        else if (auto option_secret = command_line ("secret"); option_secret) option_secret >> secret_string;
+        else if (auto option_secret = command_line ("key"); option_secret) option_secret >> secret_string;
         else throw data::exception {"secret key not provided"};
 
         ptr<key_source> signing_keys;
@@ -71,7 +71,7 @@ namespace BoostPOW {
         else throw data::exception {"could not read signing key"};
 
         string address_string;
-        if (auto positional = command_line (arg_position + 1); positional) positional >> address_string;
+        if (auto positional = command_line (address_position); positional) positional >> address_string;
         else if (auto option = command_line ("address"); option) option >> address_string;
 
         if (address_string == "") {
@@ -105,48 +105,89 @@ namespace BoostPOW {
         return options;
     }
 
+    Boost::output_script read_output_script (const string &script_string) {
+
+        ptr<bytes> script_from_hex = encoding::hex::read (script_string);
+        typed_data script_from_bip_276 = typed_data::read (script_string);
+
+        if (script_from_bip_276.valid ()) return Boost::output_script::read (script_from_bip_276.Data);
+        else if (script_from_hex != nullptr) return Boost::output_script::read (*script_from_hex);
+
+        return Boost::output_script {};
+
+    }
+
+    int64 read_satoshi_value (const argh::parser &command_line, int arg_position) {
+
+        int64 satoshi_value = -1;
+        if (auto positional = command_line (arg_position); positional) positional >> satoshi_value;
+        else if (auto option = command_line ("value"); option) option >> satoshi_value;
+        else return satoshi_value;
+
+        if (satoshi_value <= 0) throw data::exception {} << "invalid satoshi value " << satoshi_value << " provided";
+        return satoshi_value;
+    }
+
     int run_redeem (const argh::parser &command_line,
         int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const mining_options &)) {
 
-        Bitcoin::outpoint outpoint;
+        Bitcoin::outpoint outpoint {};
+        Boost::output_script boost_script {};
 
-        string txid_string;
-        if (auto positional = command_line (2); positional) positional >> txid_string;
-        else if (auto option = command_line ("txid"); option) option >> txid_string;
+        string first_arg;
+        if (auto positional = command_line (2); positional) {
+            positional >> first_arg;
+
+            // Test another way to read inputs for backwards compatibilty.
+            // In an earlier version of the program, the boost script came first.
+            boost_script = read_output_script (first_arg);
+
+            if (boost_script.valid ()) {
+
+                // since a boost script was provided, we look to the next argument to be a satoshi value.
+                int64 sats = read_satoshi_value (command_line, 3);
+
+                string txid_string;
+                if (auto positional = command_line (4); positional) positional >> txid_string;
+                else if (auto option = command_line ("txid"); option) option >> txid_string;
+                else throw data::exception {"option txid not provided "};
+
+                outpoint.Digest = Bitcoin::txid {txid_string};
+                if (!outpoint.Digest.valid ()) throw data::exception {} << "could not read txid " << txid_string;
+
+                if (auto positional = command_line (5); positional) positional >> outpoint.Index;
+                else if (auto option = command_line ("index"); option) option >> outpoint.Index;
+
+                return redeem (outpoint, boost_script, sats, read_mining_options (command_line, 6, 7));
+            }
+
+        } else if (auto option = command_line ("txid"); option) option >> first_arg;
         else throw data::exception {"option txid not provided "};
 
-        outpoint.Digest = Bitcoin::txid {txid_string};
-        if (!outpoint.Digest.valid ()) throw data::exception {} << "could not read txid " << txid_string;
+        // continue to read inputs normally.
+        outpoint.Digest = Bitcoin::txid {first_arg};
+        if (!outpoint.Digest.valid ()) throw data::exception {} << "could not read txid " << first_arg;
 
         if (auto positional = command_line (3); positional) positional >> outpoint.Index;
         else if (auto option = command_line ("index"); option) option >> outpoint.Index;
 
-        Boost::output_script boost_script {};
+        auto options = read_mining_options (command_line, 4, 7);
 
         {
             string script_string;
-            if (auto positional = command_line (4); positional) positional >> script_string;
+            if (auto positional = command_line (5); positional) positional >> script_string;
             else if (auto option = command_line ("script"); option) option >> script_string;
             else goto no_script_provided;
 
-            bytes *script;
-            ptr<bytes> script_from_hex = encoding::hex::read (script_string);
-            typed_data script_from_bip_276 = typed_data::read (script_string);
-
-            if (script_from_bip_276.valid ()) script = &script_from_bip_276.Data;
-            else if (script_from_hex != nullptr) script = &*script_from_hex;
-            else throw data::exception {"could not read script"};
-
-            boost_script = Boost::output_script::read (*script);
+            boost_script = read_output_script (script_string);
+            if (!boost_script.valid ()) throw data::exception {"could not read script"};
         }
 
         no_script_provided:
 
-        int64 satoshi_value = -1;
-        if (auto positional = command_line (5); positional) positional >> satoshi_value;
-        else if (auto option = command_line ("value"); option) option >> satoshi_value;
+        int64 satoshi_value = read_satoshi_value (command_line, 6);
 
-        return redeem (outpoint, boost_script, satoshi_value, read_mining_options (command_line, 6));
+        return redeem (outpoint, boost_script, satoshi_value, options);
 
     }
 
@@ -158,7 +199,7 @@ namespace BoostPOW {
         if (auto option = command_line ("min_profitability"); option) option >> min_profitability;
         if (auto option = command_line ("max_difficulty"); option) option >> max_difficulty;
 
-        return mine (min_profitability, max_difficulty, read_mining_options (command_line, 2));
+        return mine (min_profitability, max_difficulty, read_mining_options (command_line, 2, 3));
     }
 
     int run (const argh::parser &command_line,
