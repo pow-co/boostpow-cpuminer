@@ -15,14 +15,14 @@ BoostPOW::network::broadcast_error BoostPOW::network::broadcast (const bytes &tx
     
     try {
         broadcast_pow_co = PowCo.broadcast (tx);
-    } catch (networking::HTTP::exception ex) {
+    } catch (net::HTTP::exception ex) {
         std::cout << "exception caught broadcasting powco: " << ex.what() << std::endl;
         broadcast_pow_co = false;
     }
     
     try {
         broadcast_whatsonchain = WhatsOnChain.transaction().broadcast(tx); 
-    } catch (networking::HTTP::exception ex) {
+    } catch (net::HTTP::exception ex) {
         std::cout << "exception caught broadcasting whatsonchain." << ex.what() << std::endl;
         broadcast_whatsonchain = false;
     }
@@ -31,7 +31,7 @@ BoostPOW::network::broadcast_error BoostPOW::network::broadcast (const bytes &tx
         auto broadcast_result = Gorilla.submit_transaction({tx});
         broadcast_gorilla = broadcast_result.ReturnResult == BitcoinAssociation::MAPI::success;
         if (!broadcast_gorilla) std::cout << "Gorilla broadcast description: " << broadcast_result.ResultDescription << std::endl; 
-    } catch (networking::HTTP::exception ex) {
+    } catch (net::HTTP::exception ex) {
         std::cout << "exception caught broadcasting gorilla: " << ex.what() << "; response code = " << ex.Response.Status << std::endl;
         broadcast_gorilla = false;
     }
@@ -71,11 +71,11 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
         inpoint in;
         try {
             in = PowCo.spends (job.outpoint ());
-        } catch (networking::HTTP::exception &exception) {
+        } catch (net::HTTP::exception &exception) {
             // continue if this call fails, as it is not essential. 
             std::cout << "API problem: " << exception.what () <<
-                "\n\tcall: " << exception.Request.Method << " " << exception.Request.Port << 
-                "://" << exception.Request.Host << exception.Request.Path << 
+                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.Port <<
+                "://" << exception.Request.URL.Host << exception.Request.URL.Path <<
                 "\n\theaders: " << exception.Request.Headers << 
                 "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
         }
@@ -173,6 +173,7 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
 satoshi_per_byte BoostPOW::network::mining_fee () {
     std::lock_guard<std::mutex> lock (Mutex);
     auto z = Gorilla.get_fee_quote ();
+    if (!z.valid ()) throw exception {} << "invalid fee quote response received: " << string (JSON (z));
     auto j = JSON (z);
     
     return z.Fees["standard"].MiningFee;

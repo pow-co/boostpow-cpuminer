@@ -142,11 +142,6 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
 
 int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &script, int64 value, const BoostPOW::mining_options &options) {
     
-    boost::asio::io_context io {};
-    BoostPOW::network Net = (options.APIHost) ?
-        BoostPOW::network {io, *options.APIHost} :
-        BoostPOW::network {io};
-    
     Boost::candidate Job {};
 
     Boost::output_script boost_script {};
@@ -191,6 +186,11 @@ int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &scrip
       {"miner", key.address ()},
       {"recipient", string (address)}
     });
+
+    net::HTTP::caller http {};
+    BoostPOW::network Net = (options.APIHost) ?
+        BoostPOW::network {http, *options.APIHost} :
+        BoostPOW::network {http};
     
     redeemer r {Net, *Fees, address.Digest, options.Threads,
         std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337};
@@ -238,10 +238,10 @@ int mine (double min_profitability, double max_difficulty, const BoostPOW::minin
     
     std::cout << "about to start running" << std::endl;
 
-    boost::asio::io_context io {};
+    net::HTTP::caller http {};
     BoostPOW::network Net = (options.APIHost) ?
-        BoostPOW::network {io, *options.APIHost} :
-        BoostPOW::network {io};
+        BoostPOW::network {http, *options.APIHost} :
+        BoostPOW::network {http};
 
     BoostPOW::fees *Fees = bool (options.FeeRate) ?
         (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :

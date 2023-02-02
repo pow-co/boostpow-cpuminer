@@ -14,7 +14,7 @@ add_library (bm STATIC
     src/jobs.cpp)
     
 target_include_directories (bm PUBLIC include)
-target_link_libraries (bm PUBLIC CONAN_PKG::gigamonkey)
+target_link_libraries (bm PUBLIC CONAN_PKG::Gigamonkey)
 target_compile_features (bm PUBLIC cxx_std_20)
 set_target_properties (bm PROPERTIES CXX_EXTENSIONS OFF)
 

@@ -11,14 +11,13 @@ using namespace Gigamonkey;
 namespace BoostPOW {
 
     struct network {
-        boost::asio::io_context &IO;
-        networking::HTTP HTTP;
+        net::HTTP::caller &Caller;
         whatsonchain WhatsOnChain;
         pow_co PowCo;
         BitcoinAssociation::MAPI Gorilla;
         
-        network(boost::asio::io_context &io, string api_host = "pow.co") :
-            IO {io}, HTTP {IO}, WhatsOnChain {HTTP}, PowCo {HTTP, api_host},
+        network (net::HTTP::caller &caller, string api_host = "pow.co") :
+            Caller {caller}, WhatsOnChain {caller}, PowCo {caller, api_host},
             Gorilla {HTTP, networking::REST {"https", "mapi.gorillapool.io"}} {}
         
         BoostPOW::jobs jobs (uint32 limit = 10);

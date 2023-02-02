@@ -249,8 +249,8 @@ namespace BoostPOW {
                 update_jobs (Net.jobs (100));
             } catch (const networking::HTTP::exception &exception) {
                 std::cout << "API problem: " << exception.what () <<
-                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.Port << 
-                    "://" << exception.Request.Host << exception.Request.Path << 
+                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.Port <<
+                    "://" << exception.Request.URL.Host << exception.Request.URL.Path <<
                     "\n\theaders: " << exception.Request.Headers << 
                     "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
             } catch (const std::exception &exception) {
@@ -351,7 +351,8 @@ namespace BoostPOW {
         bytes pay_script = pay_to_address::script (Addresses.next ().Digest);
         auto expected_inputs_size = puzzle.second.expected_size ();
         auto estimated_size = BoostPOW::estimate_size (expected_inputs_size, pay_script.size ());
-        
+        std::cout << "redeeming tx; fee rate is " << fee_rate << std::endl;
+        if (fee_rate <= .0001) throw "error: fee rate too small";
         Bitcoin::satoshi fee {int64 (ceil (fee_rate * estimated_size))};
         
         if (fee > value) throw string {"Cannot pay tx fee with boost output"};

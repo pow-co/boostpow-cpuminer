@@ -150,15 +150,14 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) const 
 
 bool broadcast(const Bitcoin::transaction &t) {
     
-    boost::asio::io_context IO{};
-    networking::HTTP http{IO};
-    whatsonchain API{http};
+    net::HTTP::caller http {};
+    whatsonchain API {http};
     
     uint32 last_used = 0;
     
     try {
-        return API.transaction().broadcast(bytes(t));
-    } catch (networking::HTTP::response response) {
+        return API.transaction ().broadcast (bytes(t));
+    } catch (net::HTTP::response response) {
         std::cout << "invalid HTTP response caught " << response.Status << std::endl;
     } 
     
@@ -182,26 +181,25 @@ wallet read_wallet_from_file(const std::string &filename) {
 
 wallet restore(const HD::BIP_32::secret &master, uint32 max_look_ahead) {
     
-    wallet w{{}, master, 0};
+    wallet w {{}, master, 0};
     
-    boost::asio::io_context IO;
-    networking::HTTP http{IO};
-    whatsonchain API{http};
+    net::HTTP::caller http;
+    whatsonchain API {http};
     
     uint32 last_used = 0;
     
     try {
         while (true) {
             
-            Bitcoin::secret new_key = Bitcoin::secret(w.Master.derive(w.Index));
+            Bitcoin::secret new_key = Bitcoin::secret (w.Master.derive(w.Index));
             w.Index += 1;
             
-            Bitcoin::address new_addr = new_key.address();
+            Bitcoin::address new_addr = new_key.address ();
             std::cout << "testing address " << new_addr << std::endl;
             
-            auto txs = API.address().get_unspent(new_addr);
+            auto txs = API.address ().get_unspent (new_addr);
             
-            if (txs.size() == 0) {
+            if (txs.size () == 0) {
                 if (last_used == max_look_ahead) break;
                 
                 last_used++;
@@ -212,11 +210,11 @@ wallet restore(const HD::BIP_32::secret &master, uint32 max_look_ahead) {
             
             for (const auto &prevout : txs) {
                 std::cout << "  match found at " << prevout.Outpoint << " with value " << prevout.Value << std::endl;
-                w = w.insert(p2pkh_prevout{prevout.Outpoint.Digest, prevout.Outpoint.Index, prevout.Value, new_key});
+                w = w.insert (p2pkh_prevout {prevout.Outpoint.Digest, prevout.Outpoint.Index, prevout.Value, new_key});
             }
             
         }
-    } catch (networking::HTTP::response response) {
+    } catch (net::HTTP::response response) {
         std::cout << "invalid HTTP response caught " << response.Status << std::endl;
     } 
     

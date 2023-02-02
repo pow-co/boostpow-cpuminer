@@ -1,7 +1,8 @@
 #ifndef BOOSTMINER_POW_CO_API
 #define BOOSTMINER_POW_CO_API
 
-#include <data/networking/HTTP_client.hpp>
+#include <data/net/asio/session.hpp>
+#include <data/net/HTTP_client.hpp>
 #include <gigamonkey/boost/boost.hpp>
 
 using namespace Gigamonkey;
@@ -14,10 +15,10 @@ struct inpoint : Bitcoin::outpoint {
     inpoint (const Bitcoin::txid &t, uint32 i) : outpoint {t, i} {}
 };
 
-struct pow_co : networking::HTTP_client {
+struct pow_co : net::HTTP::client {
     
-    pow_co (networking::HTTP &http, string host = "pow.co") :
-        networking::HTTP_client {http, networking::REST {"https", host}, tools::rate_limiter {3, 1}} {}
+    pow_co (net::HTTP::caller &http, string host = "pow.co") :
+        net::HTTP::client {http, net::REST {"https", host}, tools::rate_limiter {3, 1}} {}
     
     list<Boost::prevout> jobs (uint32 limit = 10);
     
@@ -29,6 +30,8 @@ struct pow_co : networking::HTTP_client {
     void submit_proof (const bytes &);
     
     bool broadcast (const bytes &);
+
+    void connect (net::asio::error_handler error_handler, net::interaction<string_view, const string &>, net::close_handler);
     
 };
 

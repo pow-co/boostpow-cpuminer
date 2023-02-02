@@ -1,23 +1,24 @@
 #include <pow_co_api.hpp>
+#include <data/net/websocket.hpp>
 
 Boost::prevout read_job (const JSON &job,
-    networking::HTTP::request &request, 
-    networking::HTTP::response &response) {
+    net::HTTP::request &request,
+    net::HTTP::response &response) {
     
     uint32 index {job.at ("vout")};
     
     int64 value {job.at ("value")};
     
     digest256 txid {string {"0x"} + string (job.at ("txid"))};
-    if (!txid.valid ()) throw networking::HTTP::exception {request, response, "cannot read txid"};
+    if (!txid.valid ()) throw net::HTTP::exception {request, response, "cannot read txid"};
     
     ptr<bytes> script_bytes = encoding::hex::read (string (job.at ("script")));
     if (script_bytes == nullptr) 
-        throw networking::HTTP::exception {request, response, "script should be in hex format"};
+        throw net::HTTP::exception {request, response, "script should be in hex format"};
     
     Boost::output_script script {*script_bytes};
     if (!script.valid ())
-        throw networking::HTTP::exception {request, response, "invalid boost script"};
+        throw net::HTTP::exception {request, response, "invalid boost script"};
     
     return Boost::prevout {
         Bitcoin::outpoint {txid, index},
@@ -31,14 +32,14 @@ list<Boost::prevout> pow_co::jobs (uint32 limit) {
     auto request = this->Rest.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
     auto response = this->operator () (request);
     
-    if (response.Status != networking::HTTP::status::ok) {
+    if (response.Status != net::HTTP::status::ok) {
         std::stringstream ss;
         ss << "response status is " << response.Status;
-        throw networking::HTTP::exception {request, response, ss.str () };
+        throw net::HTTP::exception {request, response, ss.str () };
     }
     /*
-    if (response.Headers[networking::HTTP::header::content_type] != "application/JSON") 
-        throw networking::HTTP::exception{request, response, "expected content type application/JSON"};
+    if (response.Headers[net::HTTP::header::content_type] != "application/JSON")
+        throw net::HTTP::exception {request, response, "expected content type application/JSON"};
     */
     
     list<Boost::prevout> boost_jobs;
@@ -48,7 +49,7 @@ list<Boost::prevout> pow_co::jobs (uint32 limit) {
         
         for (const JSON &job : JSON_jobs) boost_jobs = boost_jobs << read_job (job, request, response);
     } catch (const JSON::exception &j) {
-        throw networking::HTTP::exception {request, response, string {"invalid JSON format: "} + string {j.what ()}};
+        throw net::HTTP::exception {request, response, string {"invalid JSON format: "} + string {j.what ()}};
     }
     
     return boost_jobs;
@@ -64,17 +65,17 @@ inpoint pow_co::spends (const Bitcoin::outpoint &outpoint) {
     auto request = this->Rest.GET (path_stream.str ());
     auto response = this->operator () (request);
     
-    if (response.Status != networking::HTTP::status::ok) {
+    if (response.Status != net::HTTP::status::ok) {
         std::stringstream ss;
         ss << "response status is " << response.Status;
-        throw networking::HTTP::exception {request, response, ss.str () };
+        throw net::HTTP::exception {request, response, ss.str () };
     }
     
     list<Boost::prevout> boost_jobs;
     try {
         if (response.Body == "") return {};
     } catch (const JSON::exception &j) {
-        throw networking::HTTP::exception {request, response, string {"invalid JSON format: "} + string {j.what ()}};
+        throw net::HTTP::exception {request, response, string {"invalid JSON format: "} + string {j.what ()}};
     }
     
     return {};
@@ -83,7 +84,7 @@ inpoint pow_co::spends (const Bitcoin::outpoint &outpoint) {
 
 void pow_co::submit_proof (const bytes &tx) {
     auto request = this->Rest.POST ("/api/v1/boost/proofs",
-        {{networking::HTTP::header::content_type, "application/JSON"}},
+        {{net::HTTP::header::content_type, "application/JSON"}},
         JSON {{"transaction", encoding::hex::write (tx)}}.dump ());
     this->operator () (request);
 }
@@ -91,13 +92,13 @@ void pow_co::submit_proof (const bytes &tx) {
 bool pow_co::broadcast (const bytes &tx) {
     
     auto request = this->Rest.POST ("/api/v1/transactions",
-        {{networking::HTTP::header::content_type, "application/JSON"}}, 
+        {{net::HTTP::header::content_type, "application/JSON"}},
         JSON {{"transaction", encoding::hex::write (tx)}}.dump ());
     
     auto response = (*this) (request);
     
     if (static_cast<unsigned int> (response.Status) >= 500)
-        throw networking::HTTP::exception{request, response, string{"problem reading txid."}};
+        throw net::HTTP::exception{request, response, string{"problem reading txid."}};
     
     if (static_cast<unsigned int> (response.Status) != 200) {
         std::cout << "pow co returns response code " << response.Status << std::endl;
@@ -124,7 +125,7 @@ Boost::prevout pow_co::job(const Bitcoin::txid &txid) {
     auto response = (*this) (request);
     
     if (static_cast<unsigned int> (response.Status) >= 500)
-        throw networking::HTTP::exception{request, response, string {"problem reading txid."}};
+        throw net::HTTP::exception{request, response, string {"problem reading txid."}};
     
     if (static_cast<unsigned int> (response.Status) != 200)
         std::cout << "pow co returns response code " << response.Status << std::endl;
@@ -144,7 +145,7 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
     auto response = (*this) (request);
     
     if (static_cast<unsigned int> (response.Status) >= 500)
-        throw networking::HTTP::exception {request, response, string {"problem reading txid."}};
+        throw net::HTTP::exception {request, response, string {"problem reading txid."}};
     
     if (static_cast<unsigned int> (response.Status) != 200)
         std::cout << "pow co returns response code " << response.Status << std::endl;
@@ -152,3 +153,12 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
     return read_job (JSON::parse (response.Body)["job"], request, response);
 }
 
+void pow_co::connect (
+        data::net::asio::error_handler error_handler,
+        data::net::interaction<string_view, const string &> interaction,
+        net::close_handler closed) {
+    net::websocket::open (
+        this->Http,
+        net::URL {net::protocol::WS, this->Rest.Host, string {"/"}},
+        error_handler, interaction, closed);
+}

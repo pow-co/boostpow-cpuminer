@@ -1,7 +1,7 @@
 #ifndef BOOSTMINER_WHATSONCHAIN_API
 #define BOOSTMINER_WHATSONCHAIN_API
 
-#include <data/networking/HTTP_client.hpp>
+#include <data/net/HTTP_client.hpp>
 #include <gigamonkey/address.hpp>
 
 using namespace Gigamonkey;
@@ -12,22 +12,22 @@ struct UTXO {
     Bitcoin::satoshi Value;
     uint32 Height;
     
-    UTXO();
-    UTXO(const JSON &);
-    bool valid() const;
+    UTXO ();
+    UTXO (const JSON &);
+    bool valid () const;
     
-    bool operator==(const UTXO &u) const {
+    bool operator == (const UTXO &u) const {
         return Outpoint == u.Outpoint && Value == u.Value && Height == u.Height;
     }
     
-    explicit operator JSON() const;
+    explicit operator JSON () const;
     
 };
 
-struct whatsonchain : networking::HTTP_client {
-    whatsonchain(networking::HTTP &http) : 
-        networking::HTTP_client{http, 
-            networking::REST{"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
+struct whatsonchain : net::HTTP::client {
+    whatsonchain (net::HTTP::caller &http) :
+        net::HTTP::client {http,
+            net::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
     
     struct addresses {
         struct balance {
@@ -35,59 +35,59 @@ struct whatsonchain : networking::HTTP_client {
             Bitcoin::satoshi Unconfirmed;
         };
         
-        balance get_balance(const Bitcoin::address &);
+        balance get_balance (const Bitcoin::address &);
         
         struct transaction_info {
             Bitcoin::txid TxHash;
             uint32 Height;
         };
         
-        list<transaction_info> get_history(const Bitcoin::address &);
+        list<transaction_info> get_history (const Bitcoin::address &);
         
-        list<UTXO> get_unspent(const Bitcoin::address &);
+        list<UTXO> get_unspent (const Bitcoin::address &);
         
         whatsonchain &API;
     };
     
-    addresses address();
+    addresses address ();
     
     struct transactions {
         
-        bool broadcast(const bytes& tx);
+        bool broadcast (const bytes& tx);
         
-        bytes get_raw(const Bitcoin::txid&);
+        bytes get_raw (const Bitcoin::txid&);
         
         whatsonchain &API;
     };
     
-    transactions transaction();
+    transactions transaction ();
     
     struct scripts {
         
-        list<UTXO> get_unspent(const digest256& script_hash);
-        list<Bitcoin::txid> get_history(const digest256& script_hash);
+        list<UTXO> get_unspent (const digest256& script_hash);
+        list<Bitcoin::txid> get_history (const digest256& script_hash);
         
         whatsonchain &API;
         
     };
     
-    scripts script();
+    scripts script ();
     
 };
 
-whatsonchain::addresses inline whatsonchain::address() {
+whatsonchain::addresses inline whatsonchain::address () {
     return addresses {*this};
 }
 
-whatsonchain::transactions inline whatsonchain::transaction() {
+whatsonchain::transactions inline whatsonchain::transaction () {
     return transactions {*this};
 }
 
-whatsonchain::scripts inline whatsonchain::script() {
+whatsonchain::scripts inline whatsonchain::script () {
     return scripts {*this};
 }
 
-bool inline UTXO::valid() const {
+bool inline UTXO::valid () const {
     return Value != 0;
 }
 

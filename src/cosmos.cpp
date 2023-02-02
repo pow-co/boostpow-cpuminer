@@ -9,30 +9,30 @@
 int command_generate (int arg_count, char** arg_values) {
     if (arg_count != 1) throw data::exception {"invalid number of arguments; one expected."};
     
-    std::string filename{arg_values[0]};
+    std::string filename {arg_values[0]};
     
     std::cout << "Type random characters and we will generate a wallet for you. Press enter when you think you have enough." << std::endl;
     
     std::string user_input {};
     
-    while(true) {
-        char x = std::cin.get();
+    while (true) {
+        char x = std::cin.get ();
         if (x == '\n') break;
-        user_input.push_back(x);
+        user_input.push_back (x);
     } 
     
-    digest512 bits = SHA2_512(user_input);
+    digest512 bits = SHA2_512 (user_input);
     
     secp256k1::secret secret;
     
-    HD::chain_code chain_code(32);
+    HD::chain_code chain_code (32);
     
-    std::copy(bits.begin(), bits.begin() + 32, secret.Value.begin());
-    std::copy(bits.begin() + 32, bits.end(), chain_code.begin());
+    std::copy (bits.begin (), bits.begin () + 32, secret.Value.begin ());
+    std::copy (bits.begin () + 32, bits.end (), chain_code.begin ());
     
-    HD::BIP_32::secret master{secret, chain_code, HD::BIP_32::main};
+    HD::BIP_32::secret master {secret, chain_code, HD::BIP_32::main};
     
-    write_to_file(wallet{{}, master, 0}, filename);
+    write_to_file (wallet {{}, master, 0}, filename);
     return 0;
 }
 
@@ -48,7 +48,7 @@ int command_receive(int arg_count, char** arg_values) {
     
     std::cout << new_key << " " << new_key.address() << std::endl;
     
-    write_to_file(w, filename);
+    write_to_file (w, filename);
     return 0;
 }
 
@@ -60,15 +60,15 @@ int command_import(int arg_count, char** arg_values) {
     string arg_txid{arg_values[1]};
     string arg_index{arg_values[2]};
     string arg_value{arg_values[3]};
-    string arg_wif{arg_values[4]};
+    string arg_wif {arg_values[4]};
     
-    digest256 txid{arg_txid};
+    digest256 txid {arg_txid};
     
     uint32 index;
-    std::stringstream{arg_index} >> index;
+    std::stringstream {arg_index} >> index;
     
     int64 value;
-    std::stringstream{arg_value} >> value;
+    std::stringstream {arg_value} >> value;
     
     Bitcoin::secret key{arg_wif};
     if (!key.valid()) throw data::exception {"could not read secret key"};
@@ -84,10 +84,10 @@ int command_import(int arg_count, char** arg_values) {
 int command_send(int arg_count, char** arg_values) {
     if (arg_count != 3) throw data::exception {"invalid number of arguments; three expected."};
     
-    std::string filename{arg_values[0]};
+    std::string filename {arg_values[0]};
     auto w = read_wallet_from_file(filename);
     
-    write_to_file(w, filename);
+    write_to_file (w, filename);
     return 0;
 }
 
@@ -158,13 +158,13 @@ int command_boost(int arg_count, char** arg_values) {
     
     Boost::output_script boost_output_script = Boost::output_script::bounty(
         0, content, target, topic, 
-        BoostPOW::casual_random{}.uint32(), 
+        BoostPOW::casual_random {}.uint32(),
         additional_data, false);
     
-    Boost::output boost_output{value, boost_output_script};
+    Boost::output boost_output {value, boost_output_script};
     auto bitcoin_output = Bitcoin::output(boost_output);
     
-    auto spend = w.spend(bitcoin_output);
+    auto spend = w.spend (bitcoin_output);
     
     uint32 boost_output_index = 0;
     // where is the output script? 
@@ -175,12 +175,12 @@ int command_boost(int arg_count, char** arg_values) {
     
     if (boost_output_index == spend.Transaction.Outputs.size()) throw data::exception {"could not find boost output index"};
     
-    boost::asio::io_context io {};
-    BoostPOW::network net {io};
+    net::HTTP::caller caller {};
+    BoostPOW::network net {caller};
     
-    net.broadcast(bytes(spend.Transaction));
+    net.broadcast (bytes (spend.Transaction));
     
-    write_to_file(spend.Wallet, filename);
+    write_to_file (spend.Wallet, filename);
     /*
     w = spend.Wallet;
     
