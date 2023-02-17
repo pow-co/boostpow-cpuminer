@@ -1,5 +1,6 @@
 #include <pow_co_api.hpp>
 #include <data/net/websocket.hpp>
+#include <data/net/JSON.hpp>
 
 Boost::prevout read_job (const JSON &job,
     net::HTTP::request &request,
@@ -154,11 +155,13 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
 }
 
 void pow_co::connect (
-        data::net::asio::error_handler error_handler,
-        data::net::interaction<string_view, const string &> interaction,
+        net::asio::error_handler error_handler,
+        net::interaction<const JSON &> interaction,
         net::close_handler closed) {
-    net::websocket::open (
-        this->Http,
-        net::URL {net::protocol::WS, this->Rest.Host, string {"/"}},
-        error_handler, interaction, closed);
+    net::open_JSON_session ([] (parse_error err) -> void {
+        throw err;
+    }, [&http = this->Http, url = net::URL {net::protocol::WS, this->Rest.Host, string {"/"}}, error_handler]
+        (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
+        net::websocket::open (http, url, error_handler, interact, closed);
+    }, interaction, closed);
 }

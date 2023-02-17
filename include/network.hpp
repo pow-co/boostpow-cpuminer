@@ -18,7 +18,7 @@ namespace BoostPOW {
         
         network (net::HTTP::caller &caller, string api_host = "pow.co") :
             Caller {caller}, WhatsOnChain {caller}, PowCo {caller, api_host},
-            Gorilla {HTTP, networking::REST {"https", "mapi.gorillapool.io"}} {}
+            Gorilla {caller, net::REST {"https", "mapi.gorillapool.io"}} {}
         
         BoostPOW::jobs jobs (uint32 limit = 10);
         

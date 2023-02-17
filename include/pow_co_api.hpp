@@ -31,7 +31,7 @@ struct pow_co : net::HTTP::client {
     
     bool broadcast (const bytes &);
 
-    void connect (net::asio::error_handler error_handler, net::interaction<string_view, const string &>, net::close_handler);
+    void connect (net::asio::error_handler error_handler, net::interaction<const JSON &>, net::close_handler);
     
 };
 
