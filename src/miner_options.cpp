@@ -36,8 +36,9 @@ namespace BoostPOW {
         else if (auto option = command_line ("address"); option) option >> address;
 
         if (address != "") {
-            options.MinerAddress = Bitcoin::address {address};
-            if (!options.MinerAddress->valid ()) throw data::exception {} << "invalid address provided: " << address;
+            Bitcoin::address miner_address {address};
+            if (!miner_address.valid ()) throw data::exception {} << "invalid address provided: " << address;
+            options.MinerPubkeyHash = miner_address.digest ();
         }
 
         if (auto option = command_line ("version"); option) option >> options.Version;
@@ -71,16 +72,17 @@ namespace BoostPOW {
         else throw data::exception {"secret key not provided"};
 
         ptr<key_source> signing_keys;
-        ptr<address_source> receiving_addresses;
 
         Bitcoin::secret key {secret_string};
         HD::BIP_32::secret hd_key {secret_string};
 
-        if (key.valid ()) options.SigningKeys =
+        if (key.valid ()) signing_keys =
             std::static_pointer_cast<key_source> (std::make_shared<single_key_source> (key));
-        else if (hd_key.valid ()) options.SigningKeys =
+        else if (hd_key.valid ()) signing_keys =
             std::static_pointer_cast<key_source> (std::make_shared<HD::key_source> (hd_key));
         else throw data::exception {"could not read signing key"};
+
+        options.SigningKeys = std::make_shared<map_key_database> (signing_keys, 10);
 
         string address_string;
         if (auto positional = command_line (address_position); positional) positional >> address_string;
@@ -93,7 +95,7 @@ namespace BoostPOW {
                 std::static_pointer_cast<address_source> (std::make_shared<HD::address_source> (hd_key.to_public ()));
             else throw data::exception {"could not read receiving address"};
         } else {
-            Bitcoin::address address {address_string};
+            Bitcoin::address::decoded address {address_string};
             HD::BIP_32::pubkey hd_pubkey {address_string};
 
             if (address.valid ()) options.ReceivingAddresses =

@@ -5,8 +5,7 @@
 #include <string>
 #include <optional>
 #include <argh.h>
-#include <gigamonkey/boost/boost.hpp>
-#include <gigamonkey/schema/keysource.hpp>
+#include "jobs.hpp"
 
 namespace BoostPOW {
     using namespace Gigamonkey;
@@ -48,7 +47,7 @@ namespace BoostPOW {
 
         // if provided, a contract script will be created.
         // Otherwise a bounty script will be created.
-        std::optional<Bitcoin::address> MinerAddress {};
+        std::optional<digest160> MinerPubkeyHash {};
 
         std::optional<uint32> UserNonce {};
         std::optional<uint32> Category {};
@@ -56,7 +55,7 @@ namespace BoostPOW {
 
     struct mining_options {
 
-        ptr<key_source> SigningKeys {};
+        ptr<map_key_database> SigningKeys {};
 
         ptr<address_source> ReceivingAddresses {};
 
