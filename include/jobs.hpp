@@ -2,6 +2,7 @@
 #define BOOSTMINER_JOBS
 
 #include <gigamonkey/boost/boost.hpp>
+#include <gigamonkey/schema/keysource.hpp>
 
 namespace BoostPOW {
     using namespace Gigamonkey;
@@ -33,6 +34,50 @@ namespace BoostPOW {
         
         explicit operator JSON () const;
         
+    };
+
+    struct map_key_database final : key_source {
+        ptr<key_source> Keys;
+        uint32 MaxLookAhead;
+
+        map<digest160, Bitcoin::secret> Past;
+        list<Bitcoin::secret> Next;
+
+        explicit map_key_database (ptr<key_source> keys, uint32 max_look_ahead = 0) :
+            Keys {keys}, MaxLookAhead {max_look_ahead}, Past {}, Next {} {}
+
+        Bitcoin::secret next () override {
+            if (data::size (Next) != 0) {
+                auto n = data::first (Next);
+                Next = data::rest (Next);
+                return n;
+            }
+
+            Bitcoin::secret n = Keys->next ();
+            digest160 a = Bitcoin::Hash160 (n.to_public ());
+
+            if (!Past.contains (a)) Past = Past.insert (a, n);
+
+            return n;
+        }
+
+        Bitcoin::secret operator [] (const digest160 &addr) {
+            auto x = Past.contains (addr);
+            if (x) return *x;
+
+            while (data::size (Next) < MaxLookAhead) {
+
+                Bitcoin::secret n = Keys->next ();
+                digest160 a = Bitcoin::Hash160 (n.to_public ());
+
+                Next = Next.append (n);
+
+                if (!Past.contains (a)) {
+                    Past = Past.insert (a, n);
+                }
+            }
+        }
+
     };
     
     string write (const Bitcoin::txid &);

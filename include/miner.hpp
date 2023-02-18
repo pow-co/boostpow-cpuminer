@@ -18,7 +18,7 @@ namespace BoostPOW {
         // the address you want the bitcoins to go to once you have redeemed the boost output.
         // this is not the same as 'miner address'. This is just an address in your 
         // normal wallet and should not be the address that goes along with the key above.
-        const Bitcoin::address &address, 
+        const digest160 &address,
         // max time to mine before the function returns. 
         double fee_rate, 
         double max_time_seconds, 
@@ -39,9 +39,9 @@ namespace BoostPOW {
 
     }
     
-    Bitcoin::transaction redeem_puzzle(const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
+    Bitcoin::transaction redeem_puzzle (const Boost::puzzle &puzzle, const work::solution &solution, list<Bitcoin::output> pay);
 
-    void mining_thread(work::selector *, random *, uint32);
+    void mining_thread (work::selector *, random *, uint32);
     
     struct channel : virtual work::selector, virtual work::solver {
         std::mutex Mutex;
@@ -50,33 +50,33 @@ namespace BoostPOW {
         work::puzzle Puzzle;
         bool Valid;
         
-        void pose(const work::puzzle &p) final override {
-            std::unique_lock<std::mutex> lock(Mutex);
+        void pose (const work::puzzle &p) final override {
+            std::unique_lock<std::mutex> lock (Mutex);
             
             Puzzle = p;
-            Valid = p.valid();
+            Valid = p.valid ();
             
-            if (Valid) In.notify_all();
+            if (Valid) In.notify_all ();
         }
         
         // get latest job. If there is no job yet, block. 
         // pointer will be null if the thread is supposed to stop. 
-        work::puzzle select() final override {
-            std::unique_lock<std::mutex> lock(Mutex);
-            if (!Valid) In.wait(lock);
+        work::puzzle select () final override {
+            std::unique_lock<std::mutex> lock (Mutex);
+            if (!Valid) In.wait (lock);
             return Puzzle;
         }
         
-        channel() : Mutex{}, In{}, Puzzle{}, Valid{false} {}
+        channel () : Mutex {}, In {}, Puzzle {}, Valid {false} {}
         
     };
     
     struct multithreaded : channel {
-        multithreaded(
+        multithreaded (
             uint32 threads, uint64 random_seed) :
-            Threads{threads}, Seed{random_seed}, Workers{} {}
+            Threads {threads}, Seed {random_seed}, Workers {} {}
         
-        virtual ~multithreaded();
+        virtual ~multithreaded ();
         
         uint32 Threads; 
         uint64 Seed;
@@ -89,10 +89,10 @@ namespace BoostPOW {
     };
     
     struct redeemer : virtual work::selector, virtual work::solver {
-        redeemer() : work::selector {}, Mutex {}, Out {}, Current {} {}
-        virtual ~redeemer() {};
+        redeemer () : work::selector {}, Mutex {}, Out {}, Current {} {}
+        virtual ~redeemer () {};
         
-        void mine(const std::pair<digest256, Boost::puzzle> &p);
+        void mine (const std::pair<digest256, Boost::puzzle> &p);
         
         void wait_for_solution () {
             std::unique_lock<std::mutex> lock (Mutex);
@@ -130,8 +130,8 @@ namespace BoostPOW {
         manager (
             network &net, 
             fees &f,
-            key_source &keys, 
-            address_source &addresses, 
+            const map_key_database &keys,
+            address_source &addresses,
             uint64 random_seed, 
             double maximum_difficulty, 
             double minimum_profitability);
@@ -152,7 +152,7 @@ namespace BoostPOW {
         network &Net;
         fees &Fees;
         
-        key_source &Keys;
+        map_key_database Keys;
         address_source &Addresses;
         
         casual_random Random;

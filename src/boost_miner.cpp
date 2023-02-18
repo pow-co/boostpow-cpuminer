@@ -43,17 +43,15 @@ int spend (const BoostPOW::script_options &options) {
     
     std::cout << "topic: " << options.Topic << "; data: " << options.Data << std::endl;
 
-    if (options.MinerAddress) {
-        std::cout << "miner address: " << *options.MinerAddress << std::endl;
+    if (options.MinerPubkeyHash) {
+        std::cout << "miner address: " << *options.MinerPubkeyHash << std::endl;
 
         output_script = Boost::output_script::contract (
-            category,
-            options.Content,
-            target,
+            category, options.Content, target,
             bytes::from_string (options.Topic),
             user_nonce,
             bytes::from_string (options.Data),
-            options.MinerAddress->Digest,
+            *options.MinerPubkeyHash,
             use_general_purpose_bits);
 
         output_script_bytes = output_script.write ();
@@ -62,7 +60,7 @@ int spend (const BoostPOW::script_options &options) {
             {"target", target},
             {"difficulty", options.Difficulty},
             {"content", BoostPOW::write (options.Content)},
-            {"miner", string (*options.MinerAddress)},
+            {"miner", Bitcoin::address (Bitcoin::address::main, *options.MinerPubkeyHash)},
             {"script", {
                 {"asm", Bitcoin::ASM (output_script_bytes)},
                 {"hex", encoding::hex::write (output_script_bytes)}
@@ -70,9 +68,7 @@ int spend (const BoostPOW::script_options &options) {
         });
     } else {
         output_script = Boost::output_script::bounty (
-            category,
-            options.Content,
-            target,
+            category, options.Content, target,
             bytes::from_string (options.Topic),
             user_nonce,
             bytes::from_string (options.Data),
@@ -100,14 +96,14 @@ int spend (const BoostPOW::script_options &options) {
 struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
     BoostPOW::network &Net;
     BoostPOW::fees &Fees;
-    Bitcoin::address Address;
+    digest160 Address;
     
-    redeemer(
+    redeemer (
         BoostPOW::network &net, 
         BoostPOW::fees &fees, 
-        const Bitcoin::address &address, 
+        const digest160 &address,
         uint32 threads, uint64 random_seed) : 
-        Net{net}, Fees {fees}, Address {address},
+        Net {net}, Fees {fees}, Address {address},
         BoostPOW::redeemer {}, BoostPOW::multithreaded {threads, random_seed} {
         this->start_threads ();
     }
@@ -117,7 +113,7 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
         double fee_rate {Fees.get ()};
         
         auto value = puzzle.second.value ();
-        bytes pay_script = pay_to_address::script (Address.Digest);
+        bytes pay_script = pay_to_address::script (Address);
         auto expected_inputs_size = puzzle.second.expected_size ();
         auto estimated_size = BoostPOW::estimate_size (expected_inputs_size, pay_script.size());
         std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size () << std::endl;
@@ -198,11 +194,12 @@ int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &scrip
       {"difficulty", double (Job.difficulty ())},
       {"value", value},
       {"outpoint", BoostPOW::write (outpoint)},
-      {"miner", key.address ().write ()},
-      {"recipient", address.write ()}
+      {"miner", key.address ()},
+      {"recipient", string (address)}
     });
     
-    redeemer r {Net, *Fees, address, options.Threads, std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337};
+    redeemer r {Net, *Fees, address.Digest, options.Threads,
+        std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337};
     
     r.mine ({Job.id (), Boost::puzzle {Job, key}});
     
@@ -229,8 +226,8 @@ struct manager : BoostPOW::manager {
     manager (
         BoostPOW::network &net, 
         BoostPOW::fees &f,
-        key_source &keys, 
-        address_source &addresses, 
+        const BoostPOW::map_key_database &keys,
+        address_source &addresses,
         uint64 random_seed, 
         double maximum_difficulty, 
         double minimum_profitability, int threads): 
