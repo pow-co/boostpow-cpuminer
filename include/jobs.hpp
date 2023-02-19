@@ -76,6 +76,8 @@ namespace BoostPOW {
                     Past = Past.insert (a, n);
                 }
             }
+
+            return Bitcoin::secret {};
         }
 
     };
