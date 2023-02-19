@@ -321,8 +321,7 @@ namespace BoostPOW {
                 it = Jobs.erase (it);
             } else it++;
         
-        uint32 profitable_jobs = Jobs.size () - unprofitable_jobs;
-        
+        uint32 profitable_jobs = Jobs.size ();
         std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << profitable_jobs << " jobs remaining " << std::endl;
 
         if (profitable_jobs == 0) return;
