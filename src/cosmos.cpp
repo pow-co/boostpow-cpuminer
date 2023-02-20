@@ -175,8 +175,7 @@ int command_boost(int arg_count, char** arg_values) {
     
     if (boost_output_index == spend.Transaction.Outputs.size()) throw data::exception {"could not find boost output index"};
     
-    net::HTTP::caller caller {};
-    BoostPOW::network net {caller};
+    BoostPOW::network net {};
     
     net.broadcast (bytes (spend.Transaction));
     

@@ -150,8 +150,7 @@ wallet::spent wallet::spend(Bitcoin::output to, double satoshis_per_byte) const 
 
 bool broadcast(const Bitcoin::transaction &t) {
     
-    net::HTTP::caller http {};
-    whatsonchain API {http};
+    whatsonchain API {};
     
     uint32 last_used = 0;
     
@@ -183,8 +182,7 @@ wallet restore(const HD::BIP_32::secret &master, uint32 max_look_ahead) {
     
     wallet w {{}, master, 0};
     
-    net::HTTP::caller http;
-    whatsonchain API {http};
+    whatsonchain API {};
     
     uint32 last_used = 0;
     

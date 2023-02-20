@@ -243,23 +243,35 @@ namespace BoostPOW {
     }
     
     void manager::run () {
-        while (true) {
-            std::cout << "calling API" << std::endl;
+
+        // we will call the API every few minutes.
+        function<void (boost::system::error_code)> periodically = [self = this->shared_from_this (), periodically]
+            (boost::system::error_code err) {
+            if (err) throw exception {} << "unknown error: " << err;
+
             try {
-                update_jobs (Net.jobs (100));
-            } catch (const networking::HTTP::exception &exception) {
+                self->update_jobs (self->Net.jobs (100));
+            } catch (const net::HTTP::exception &exception) {
                 std::cout << "API problem: " << exception.what () <<
                     "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.Port <<
                     "://" << exception.Request.URL.Host << exception.Request.URL.Path <<
-                    "\n\theaders: " << exception.Request.Headers << 
+                    "\n\theaders: " << exception.Request.Headers <<
                     "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
             } catch (const std::exception &exception) {
                 std::cout << "Problem: " << exception.what () << std::endl;
             }
-            
-            std::this_thread::sleep_for (std::chrono::seconds (90));
-            
-        }
+
+            boost::asio::steady_timer t (self->Net.IO);
+            t.expires_after (std::chrono::seconds (180));
+
+            t.async_wait (periodically);
+        };
+
+        // get started.
+        periodically (boost::system::error_code {});
+
+        Net.IO.run ();
+
     }
     
     void manager::select_job (int i) {

@@ -11,14 +11,18 @@ using namespace Gigamonkey;
 namespace BoostPOW {
 
     struct network {
-        net::HTTP::caller &Caller;
+        net::asio::io_context IO;
+        ptr<net::HTTP::SSL> SSL;
         whatsonchain WhatsOnChain;
         pow_co PowCo;
         BitcoinAssociation::MAPI Gorilla;
         
-        network (net::HTTP::caller &caller, string api_host = "pow.co") :
-            Caller {caller}, WhatsOnChain {caller}, PowCo {caller, api_host},
-            Gorilla {caller, net::REST {"https", "mapi.gorillapool.io"}} {}
+        network (string api_host = "pow.co") : IO {}, SSL {std::make_shared<net::HTTP::SSL> (net::HTTP::SSL::tlsv12_client)},
+            WhatsOnChain {SSL}, PowCo {IO, SSL, api_host},
+            Gorilla {net::HTTP::REST {"https", "mapi.gorillapool.io"}} {
+            SSL->set_default_verify_paths ();
+            SSL->set_verify_mode (net::asio::ssl::verify_peer);
+        }
         
         BoostPOW::jobs jobs (uint32 limit = 10);
         

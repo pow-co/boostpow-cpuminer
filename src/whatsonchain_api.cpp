@@ -2,7 +2,7 @@
 
 bool whatsonchain::transactions::broadcast(const bytes &tx) {
     
-    auto request = API.Rest.POST ("/v1/bsv/main/tx/raw",
+    auto request = API.REST.POST ("/v1/bsv/main/tx/raw",
         {{net::HTTP::header::content_type, "application/JSON"}},
         JSON {{"tx_hex", encoding::hex::write (tx)}}.dump ());
     
@@ -45,7 +45,7 @@ UTXO::operator JSON() const {
 list<UTXO> whatsonchain::addresses::get_unspent (const Bitcoin::address &addr) {
     std::stringstream ss;
     ss << "/v1/bsv/main/address/" << addr << "/unspent";
-    auto request = API.Rest.GET (ss.str ());
+    auto request = API.REST.GET (ss.str ());
     auto response = API (request);
     
     if (response.Status != net::HTTP::status::ok) {
@@ -79,7 +79,7 @@ list<UTXO> whatsonchain::scripts::get_unspent (const digest256 &script_hash) {
     
     string call = string {"/v1/bsv/main/script/"} + ss.str ().substr (9, 64) + "/unspent";
     
-    auto request = API.Rest.GET (call);
+    auto request = API.REST.GET (call);
     auto response = API (request);
     
     if (response.Status != net::HTTP::status::ok)
@@ -115,7 +115,7 @@ list<Bitcoin::txid> whatsonchain::scripts::get_history (const digest256& script_
     
     string call = string {"/v1/bsv/main/script/"} + ss.str ().substr (9, 64) + string {"/history"};
     
-    auto request = API.Rest.GET (call);
+    auto request = API.REST.GET (call);
     auto response = API (request);
     
     if (response.Status != net::HTTP::status::ok)
@@ -151,7 +151,7 @@ bytes whatsonchain::transactions::get_raw (const Bitcoin::txid &txid) {
     
     string call = string {"/v1/bsv/main/tx/"} + ss.str ().substr (9, 64) + string {"/hex"};
     
-    auto request = API.Rest.GET (call);
+    auto request = API.REST.GET (call);
     auto response = API (request);
     
     if (static_cast<unsigned int> (response.Status) == 404) return {};

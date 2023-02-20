@@ -30,7 +30,7 @@ list<Boost::prevout> pow_co::jobs (uint32 limit) {
     std::stringstream ss;
     ss << limit;
     
-    auto request = this->Rest.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
+    auto request = this->REST.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
     auto response = this->operator () (request);
     
     if (response.Status != net::HTTP::status::ok) {
@@ -63,7 +63,7 @@ inpoint pow_co::spends (const Bitcoin::outpoint &outpoint) {
     std::stringstream path_stream;
     path_stream << "/api/v1/spends/" << hash_stream.str ().substr (9, 64) << "/" << outpoint.Index;
     
-    auto request = this->Rest.GET (path_stream.str ());
+    auto request = this->REST.GET (path_stream.str ());
     auto response = this->operator () (request);
     
     if (response.Status != net::HTTP::status::ok) {
@@ -84,7 +84,7 @@ inpoint pow_co::spends (const Bitcoin::outpoint &outpoint) {
 }
 
 void pow_co::submit_proof (const bytes &tx) {
-    auto request = this->Rest.POST ("/api/v1/boost/proofs",
+    auto request = this->REST.POST ("/api/v1/boost/proofs",
         {{net::HTTP::header::content_type, "application/JSON"}},
         JSON {{"transaction", encoding::hex::write (tx)}}.dump ());
     this->operator () (request);
@@ -92,7 +92,7 @@ void pow_co::submit_proof (const bytes &tx) {
 
 bool pow_co::broadcast (const bytes &tx) {
     
-    auto request = this->Rest.POST ("/api/v1/transactions",
+    auto request = this->REST.POST ("/api/v1/transactions",
         {{net::HTTP::header::content_type, "application/JSON"}},
         JSON {{"transaction", encoding::hex::write (tx)}}.dump ());
     
@@ -121,7 +121,7 @@ Boost::prevout pow_co::job(const Bitcoin::txid &txid) {
     std::stringstream path_stream;
     path_stream << "/api/v1/boost/jobs/" << hash_stream.str ().substr (9, 64);
     
-    auto request = this->Rest.GET (path_stream.str ());
+    auto request = this->REST.GET (path_stream.str ());
     
     auto response = (*this) (request);
     
@@ -141,7 +141,7 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
     std::stringstream path_stream;
     path_stream << "/api/v1/boost/jobs/" << hash_stream.str ().substr (9, 64) << "_o" << o.Index;
     
-    auto request = this->Rest.GET (path_stream.str ());
+    auto request = this->REST.GET (path_stream.str ());
     
     auto response = (*this) (request);
     
@@ -156,12 +156,12 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
 
 void pow_co::connect (
         net::asio::error_handler error_handler,
-        net::interaction<const JSON &> interaction,
+        net::interaction<const JSON &> interact,
         net::close_handler closed) {
     net::open_JSON_session ([] (parse_error err) -> void {
         throw err;
-    }, [&http = this->Http, url = net::URL {net::protocol::WS, this->Rest.Host, string {"/"}}, error_handler]
+    }, [&io = this->IO, url = net::URL {net::protocol::WS, this->REST.Host, string {"/"}}, ssl = this->SSL.get (), error_handler]
         (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
-        net::websocket::open (http, url, error_handler, interact, closed);
-    }, interaction, closed);
+        net::websocket::open (io, url, ssl, error_handler, closed, interact);
+    }, interact, closed);
 }

@@ -25,9 +25,9 @@ struct UTXO {
 };
 
 struct whatsonchain : net::HTTP::client {
-    whatsonchain (net::HTTP::caller &http) :
-        net::HTTP::client {http,
-            net::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
+    whatsonchain (ptr<net::HTTP::SSL> ssl) :
+        net::HTTP::client {ssl, net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
+    whatsonchain (): net::HTTP::client {net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
     
     struct addresses {
         struct balance {
