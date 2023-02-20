@@ -245,7 +245,7 @@ namespace BoostPOW {
     void manager::run () {
 
         // we will call the API every few minutes.
-        function<void (boost::system::error_code)> periodically = [self = this->shared_from_this (), periodically]
+        function<void (boost::system::error_code)> periodically = [self = this->shared_from_this (), &periodically]
             (boost::system::error_code err) {
             if (err) throw exception {} << "unknown error: " << err;
 
@@ -259,6 +259,9 @@ namespace BoostPOW {
                     "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
             } catch (const std::exception &exception) {
                 std::cout << "Problem: " << exception.what () << std::endl;
+            } catch (...) {
+                std::cout << "something went wrong: " << std::endl;
+                return;
             }
 
             boost::asio::steady_timer t (self->Net.IO);
@@ -269,6 +272,15 @@ namespace BoostPOW {
 
         // get started.
         periodically (boost::system::error_code {});
+
+        // set up websockets.
+        Net.PowCo.connect ([] (boost::system::error_code err) {
+            throw exception {} << "websockets error " << err;
+        }, [] (ptr<net::session<const JSON &>> o) {
+            return [] (const JSON &j) {
+                std::cout << "websockets message received: " << j << std::endl;
+            };
+        }, [] () {});
 
         Net.IO.run ();
 

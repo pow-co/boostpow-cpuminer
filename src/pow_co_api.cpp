@@ -31,6 +31,7 @@ list<Boost::prevout> pow_co::jobs (uint32 limit) {
     ss << limit;
     
     auto request = this->REST.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
+    std::cout << "about to call pow co jobs!" << std::endl;
     auto response = this->operator () (request);
     
     if (response.Status != net::HTTP::status::ok) {

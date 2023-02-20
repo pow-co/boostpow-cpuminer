@@ -16,14 +16,14 @@ BoostPOW::network::broadcast_error BoostPOW::network::broadcast (const bytes &tx
     try {
         broadcast_pow_co = PowCo.broadcast (tx);
     } catch (net::HTTP::exception ex) {
-        std::cout << "exception caught broadcasting powco: " << ex.what() << std::endl;
+        std::cout << "exception caught broadcasting powco: " << ex.what () << std::endl;
         broadcast_pow_co = false;
     }
     
     try {
-        broadcast_whatsonchain = WhatsOnChain.transaction().broadcast(tx); 
+        broadcast_whatsonchain = WhatsOnChain.transaction ().broadcast (tx);
     } catch (net::HTTP::exception ex) {
-        std::cout << "exception caught broadcasting whatsonchain." << ex.what() << std::endl;
+        std::cout << "exception caught broadcasting whatsonchain." << ex.what () << std::endl;
         broadcast_whatsonchain = false;
     }
     
@@ -43,20 +43,20 @@ BoostPOW::network::broadcast_error BoostPOW::network::broadcast (const bytes &tx
     return broadcast_gorilla || broadcast_pow_co ? broadcast_error::none : broadcast_error::unknown;
 }
 
-bytes BoostPOW::network::get_transaction(const Bitcoin::txid &txid) {
+bytes BoostPOW::network::get_transaction (const Bitcoin::txid &txid) {
     static map<Bitcoin::txid, bytes> cache;
     
-    auto known = cache.contains(txid);
+    auto known = cache.contains (txid);
     if (known) return *known;
     
-    bytes tx = WhatsOnChain.transaction().get_raw(txid);
+    bytes tx = WhatsOnChain.transaction ().get_raw (txid);
     
-    if (tx != bytes{}) cache = cache.insert(txid, tx);
+    if (tx != bytes {}) cache = cache.insert (txid, tx);
     
     return tx;
 }
 
-BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
+BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
     std::lock_guard<std::mutex> lock (Mutex);
     const list<Boost::prevout> jobs_api_call {PowCo.jobs ()};
     
@@ -65,13 +65,13 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
     std::map<digest256, list<Bitcoin::txid>> script_histories;
     json::array_t redemptions;
     
-    auto count_closed_job = [this, &count_closed_jobs, &script_histories, &redemptions](const Boost::prevout &job) -> void {
+    auto count_closed_job = [this, &count_closed_jobs, &script_histories, &redemptions] (const Boost::prevout &job) -> void {
         count_closed_jobs++;
         
         inpoint in;
         try {
             in = PowCo.spends (job.outpoint ());
-        } catch (net::HTTP::exception &exception) {
+        } catch (const net::HTTP::exception &exception) {
             // continue if this call fails, as it is not essential. 
             std::cout << "API problem: " << exception.what () <<
                 "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.Port <<
@@ -86,7 +86,7 @@ BoostPOW::jobs BoostPOW::network::jobs(uint32 limit) {
             auto history = script_histories.find (script_hash);
             
             if (history == script_histories.end ()) {
-                script_histories[script_hash] = WhatsOnChain.script().get_history(script_hash);
+                script_histories[script_hash] = WhatsOnChain.script ().get_history (script_hash);
                 history = script_histories.find (script_hash);
             }
             
