@@ -74,8 +74,8 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
         } catch (const net::HTTP::exception &exception) {
             // continue if this call fails, as it is not essential. 
             std::cout << "API problem: " << exception.what () <<
-                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.Port <<
-                "://" << exception.Request.URL.Host << exception.Request.URL.Path <<
+                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
+                "://" << exception.Request.URL.host () << exception.Request.URL.path () <<
                 "\n\theaders: " << exception.Request.Headers << 
                 "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
         }

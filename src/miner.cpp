@@ -253,8 +253,8 @@ namespace BoostPOW {
                 self->update_jobs (self->Net.jobs (100));
             } catch (const net::HTTP::exception &exception) {
                 std::cout << "API problem: " << exception.what () <<
-                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.Port <<
-                    "://" << exception.Request.URL.Host << exception.Request.URL.Path <<
+                    "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
+                    "://" << exception.Request.URL.host () << exception.Request.URL.path () <<
                     "\n\theaders: " << exception.Request.Headers <<
                     "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
             } catch (const std::exception &exception) {
@@ -273,16 +273,25 @@ namespace BoostPOW {
         // get started.
         periodically (boost::system::error_code {});
 
-        // set up websockets.
-        Net.PowCo.connect ([] (boost::system::error_code err) {
-            throw exception {} << "websockets error " << err;
-        }, [] (ptr<net::session<const JSON &>> o) {
-            return [] (const JSON &j) {
-                std::cout << "websockets message received: " << j << std::endl;
-            };
-        }, [] () {});
+        std::cout << "set up websockets..." << std::endl;
 
-        Net.IO.run ();
+        try {
+
+            // set up websockets.
+            Net.PowCo.connect ([] (boost::system::error_code err) {
+                throw exception {} << "websockets error " << err;
+            }, [] (ptr<net::session<const JSON &>> o) {
+                return [] (const JSON &j) {
+                    std::cout << "websockets message received: " << j << std::endl;
+                };
+            }, [] () {});
+
+            Net.IO.run ();
+        } catch (const std::exception &e) {
+            std::cout << "caught exception " << e.what () << std::endl;
+        } catch (...) {
+            std::cout << "caught some kind of other thing" << std::endl;
+        }
 
     }
     
