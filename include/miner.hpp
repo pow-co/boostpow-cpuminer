@@ -127,7 +127,7 @@ namespace BoostPOW {
         virtual void submit (const std::pair<digest256, Boost::puzzle> &, const work::solution &) = 0;
     };
     
-    struct manager {
+    struct manager : std::enable_shared_from_this<manager> {
         
         struct redeemer : BoostPOW::redeemer {
             manager *Manager;

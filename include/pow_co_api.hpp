@@ -16,9 +16,11 @@ struct inpoint : Bitcoin::outpoint {
 };
 
 struct pow_co : net::HTTP::client {
+
+    net::asio::io_context &IO;
     
-    pow_co (net::HTTP::caller &http, string host = "pow.co") :
-        net::HTTP::client {http, net::REST {"https", host}, tools::rate_limiter {3, 1}} {}
+    pow_co (net::asio::io_context &io, ptr<net::HTTP::SSL> ssl, string host = "pow.co") :
+        net::HTTP::client {ssl, net::HTTP::REST {"https", host}, tools::rate_limiter {3, 1}}, IO {io} {}
     
     list<Boost::prevout> jobs (uint32 limit = 10);
     
