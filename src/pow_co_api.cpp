@@ -31,7 +31,6 @@ list<Boost::prevout> pow_co::jobs (uint32 limit) {
     ss << limit;
     
     auto request = this->REST.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
-    std::cout << "about to call pow co jobs!" << std::endl;
     auto response = this->operator () (request);
     
     if (response.Status != net::HTTP::status::ok) {
@@ -161,7 +160,7 @@ void pow_co::connect (
         net::close_handler closed) {
     net::open_JSON_session ([] (parse_error err) -> void {
         throw err;
-    }, [&io = this->IO, url = net::URL {net::protocol::WS, this->REST.Host, string {"/"}}, ssl = this->SSL.get (), error_handler]
+    }, [&io = this->IO, url = net::URL {net::protocol::WSS, this->REST.Host, string {"/"}}, ssl = this->SSL.get (), error_handler]
         (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
         net::websocket::open (io, url, ssl, error_handler, closed, interact);
     }, interact, closed);
