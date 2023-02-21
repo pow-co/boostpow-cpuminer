@@ -326,15 +326,22 @@ namespace BoostPOW {
 
         if (profitable_jobs == 0) return;
 
+        uint32 contract_jobs = 0;
         uint32 impossible_contract_jobs = 0;
         for (auto it = Jobs.cbegin (); it != Jobs.cend ();)
-            if (it->second.Script.Type == Boost::contract && !Keys[it->second.Script.MinerPubkeyHash].valid ()) {
-                impossible_contract_jobs++;
-                it = Jobs.erase (it);
+            if (it->second.Script.Type == Boost::contract) {
+                contract_jobs++;
+                if (!Keys[it->second.Script.MinerPubkeyHash].valid ()) {
+                    impossible_contract_jobs++;
+                    it = Jobs.erase (it);
+                } else it++;
             } else it++;
 
-        std::cout << "of these, " << impossible_contract_jobs << " are contract jobs that we don't know how to mine." << std::endl;
-        std::cout << (profitable_jobs - impossible_contract_jobs) << " jobs remaining" << std::endl;
+        std::cout << "of these, " << contract_jobs << " are contract jobs. Of those, "
+            << (contract_jobs - impossible_contract_jobs) << " are jobs that we know how to work on, leaving "
+            << (profitable_jobs - impossible_contract_jobs) << " total jobs available." << std::endl;
+
+        if (profitable_jobs - impossible_contract_jobs == 0) return;
         
         // select a new job for all mining threads. 
         for (int i = 1; i <= Redeemers.size (); i++) select_job (i);

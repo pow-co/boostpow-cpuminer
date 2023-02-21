@@ -271,7 +271,7 @@ int help () {
 
     std::cout << "Welcome to " << version_string << "!" << std::endl;
     std::cout << "Input should be \n\t<method> <args>... --<option>=<value>... \nwhere method is "
-        "\n\tspend      -- create a Boost output."
+        "\n\tspend      -- create a Boost script."
         "\n\tredeem     -- mine and redeem an existing boost output."
         "\n\tmine       -- call the pow.co API to get jobs to mine."
         "\nFor method \"spend\" provide the following as options or as arguments in order "
