@@ -115,21 +115,13 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
         auto value = puzzle.second.value ();
         bytes pay_script = pay_to_address::script (Address);
         auto expected_inputs_size = puzzle.second.expected_size ();
-        auto estimated_size = BoostPOW::estimate_size (expected_inputs_size, pay_script.size());
-        std::cout << "expected inputs size = " << expected_inputs_size << "; pay script size = " << pay_script.size () << std::endl;
-        std::cout << "total estimated size = " << estimated_size << std::endl;
+        auto estimated_size = BoostPOW::estimate_size (expected_inputs_size, pay_script.size ());
+
         Bitcoin::satoshi fee {int64 (ceil (fee_rate * estimated_size))};
-        
-        std::cout << "value: " << value << "; fee rate = " << fee_rate << " proposed fee " << fee << std::endl;
         
         if (fee > value) throw string {"Cannot pay tx fee with boost output"};
         
         auto redeem_tx = BoostPOW::redeem_puzzle (puzzle.second, solution, {Bitcoin::output {value - fee, pay_script}});
-        
-        std::cout << "tx size " << redeem_tx.serialized_size () << "; fee rate: " <<
-            ((double (value) - double (redeem_tx.sent ())) / double(redeem_tx.serialized_size ())) << std::endl;
-        for (const auto &in : redeem_tx.Inputs) std::cout << "\tinput size: " << in.serialized_size () << std::endl;
-        for (const auto &out : redeem_tx.Outputs) std::cout << "\toutput size: " << out.serialized_size() << std::endl;
         
         logger::log ("job.complete.transaction", JSON {
             {"txid", BoostPOW::write (redeem_tx.id ())},
@@ -141,7 +133,9 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
         std::unique_lock<std::mutex> lock (BoostPOW::redeemer::Mutex);
         Solved = true;
         Last = std::pair<digest256, Boost::puzzle> {};
-        std::cout << "about to notify..." << std::endl;
+        std::cout << "about to close channel" << std::endl;
+        this->close ();
+
         Out.notify_one ();
     }
 };
@@ -184,7 +178,7 @@ int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &scrip
     
     BoostPOW::fees *Fees = bool (options.FeeRate) ?
         (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :
-        (BoostPOW::fees *) (new BoostPOW::network_fees (&Net));
+        (BoostPOW::fees *) (new BoostPOW::network_fees (Net));
 
     auto key = options.SigningKeys->next ();
     auto address = options.ReceivingAddresses->next ();
@@ -203,9 +197,10 @@ int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &scrip
     
     r.mine ({Job.id (), Boost::puzzle {Job, key}});
     
-    r.wait_for_solution ();
-    
+    r.wait_for_shutdown ();
+    std::cout << "shut down... deleting fees " << std::endl;
     delete Fees;
+    std::cout << "fees deleted " << std::endl;
     return 0;
 }
 
@@ -250,7 +245,7 @@ int mine (double min_profitability, double max_difficulty, const BoostPOW::minin
 
     BoostPOW::fees *Fees = bool (options.FeeRate) ?
         (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :
-        (BoostPOW::fees *) (new BoostPOW::network_fees (&Net));
+        (BoostPOW::fees *) (new BoostPOW::network_fees (Net));
     
     manager {Net, *Fees, *options.SigningKeys, *options.ReceivingAddresses,
         std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337,
