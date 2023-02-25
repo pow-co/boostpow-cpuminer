@@ -49,6 +49,9 @@ namespace BoostPOW {
         // if provided, a contract script will be created.
         // Otherwise a bounty script will be created.
         std::optional<Bitcoin::address> MinerAddress {};
+
+        std::optional<uint32> UserNonce {};
+        std::optional<uint32> Category {};
     };
 
     struct mining_options {

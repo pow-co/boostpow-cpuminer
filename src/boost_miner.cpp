@@ -17,11 +17,11 @@ int spend (const BoostPOW::script_options &options) {
     
     // Category has no particular meaning. We could use it for
     // something like magic number if we wanted to imitate 21e8. 
-    int32_little category = 0;
+    int32_little category {options.Category ? *options.Category : 0};
     
     // User nonce is for ensuring that no two scripts are identical. 
     // You can increase the bounty for a boost by making an identical script. 
-    uint32_little user_nonce {BoostPOW::casual_random {}.uint32 ()};
+    uint32_little user_nonce {options.UserNonce ? *options.UserNonce : BoostPOW::casual_random {}.uint32 ()};
     
     // we are using version 1 for now. 
     // we will use version 2 when we know we have Stratum extensions right. 
@@ -145,6 +145,7 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
         std::unique_lock<std::mutex> lock (BoostPOW::redeemer::Mutex);
         Solved = true;
         Last = std::pair<digest256, Boost::puzzle> {};
+        std::cout << "about to notify..." << std::endl;
         Out.notify_one ();
     }
 };
@@ -172,19 +173,22 @@ int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &scrip
             boost_script = script;
         }
         
-    } else Job = Boost::candidate {
-        {Boost::prevout {
-            outpoint,
-            Boost::output {
-                Bitcoin::satoshi {value},
-                script}
-        }}};
+    } else {
+        boost_script = script;
+        Job = Boost::candidate {
+            {Boost::prevout {
+                outpoint,
+                Boost::output {
+                    Bitcoin::satoshi {value},
+                    script}
+            }}};
+    }
     
     if (!Job.valid ()) throw data::exception {"script is not valid"};
     
     BoostPOW::fees *Fees = bool (options.FeeRate) ?
-        (BoostPOW::fees *) (new BoostPOW::network_fees (&Net)) :
-        (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate));
+        (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :
+        (BoostPOW::fees *) (new BoostPOW::network_fees (&Net));
 
     auto key = options.SigningKeys->next ();
     auto address = options.ReceivingAddresses->next ();
@@ -248,8 +252,8 @@ int mine (double min_profitability, double max_difficulty, const BoostPOW::minin
         BoostPOW::network {io};
 
     BoostPOW::fees *Fees = bool (options.FeeRate) ?
-        (BoostPOW::fees *) (new BoostPOW::network_fees (&Net)) :
-        (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate));
+        (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :
+        (BoostPOW::fees *) (new BoostPOW::network_fees (&Net));
     
     manager {Net, *Fees, *options.SigningKeys, *options.ReceivingAddresses,
         std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337,
