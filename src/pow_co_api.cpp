@@ -160,7 +160,7 @@ void pow_co::connect (
         net::close_handler closed) {
     net::open_JSON_session ([] (parse_error err) -> void {
         throw err;
-    }, [&io = this->IO, url = net::URL {net::protocol::WSS, this->REST.Host, string {"/"}}, ssl = this->SSL.get (), error_handler]
+    }, [&io = this->IO, url = net::URL {net::protocol::WS, 5201, this->REST.Host, string {"/"}}, ssl = this->SSL.get (), error_handler]
         (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
         net::websocket::open (io, url, ssl, error_handler, closed, interact);
     }, interact, closed);
