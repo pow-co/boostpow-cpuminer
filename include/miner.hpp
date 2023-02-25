@@ -49,6 +49,7 @@ namespace BoostPOW {
         
         work::puzzle Puzzle;
         bool Valid;
+        bool Closed;
         
         void pose (const work::puzzle &p) final override {
             std::unique_lock<std::mutex> lock (Mutex);
@@ -63,11 +64,19 @@ namespace BoostPOW {
         // pointer will be null if the thread is supposed to stop. 
         work::puzzle select () final override {
             std::unique_lock<std::mutex> lock (Mutex);
-            if (!Valid) In.wait (lock);
+            if (!Valid && !Closed) In.wait (lock);
             return Puzzle;
         }
+
+        void close () {
+            std::unique_lock<std::mutex> lock (Mutex);
+            Closed = true;
+            Valid = false;
+            Puzzle = work::puzzle {};
+            In.notify_all ();
+        }
         
-        channel () : Mutex {}, In {}, Puzzle {}, Valid {false} {}
+        channel () : Mutex {}, In {}, Puzzle {}, Valid {false}, Closed {false} {}
         
     };
     
@@ -82,7 +91,11 @@ namespace BoostPOW {
         uint64 Seed;
         
         // start threads if not already. 
-        void start_threads();
+        void start_threads ();
+
+        void wait_for_shutdown () {
+            for (auto &th : Workers) th.join ();
+        }
         
     private:
         std::vector<std::thread> Workers;
