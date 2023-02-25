@@ -11,6 +11,7 @@ struct inpoint : Bitcoin::outpoint {
     bool valid () const {
         return this->Digest.valid ();
     }
+    inpoint (const Bitcoin::txid &t, uint32 i) : outpoint {t, i} {}
 };
 
 struct pow_co : networking::HTTP_client {
