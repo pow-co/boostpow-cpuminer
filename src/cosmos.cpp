@@ -6,8 +6,8 @@
 #include <network.hpp>
 #include <data/io/exception.hpp>
 
-int command_generate(int arg_count, char** arg_values) {
-    if (arg_count != 1) throw string {"invalid number of arguments; one expected."};
+int command_generate (int arg_count, char** arg_values) {
+    if (arg_count != 1) throw data::exception {"invalid number of arguments; one expected."};
     
     std::string filename{arg_values[0]};
     

@@ -44,6 +44,18 @@ namespace BoostPOW {
 
         if (options.Version < 1 || options.Version > 2) throw data::exception {} << "invalid script version " << options.Version;
 
+        if (auto option = command_line ("user_nonce"); option) {
+            uint32 user_nonce;
+            option >> user_nonce;
+            options.UserNonce = user_nonce;
+        }
+
+        if (auto option = command_line ("category"); option) {
+            uint32 category;
+            option >> category;
+            options.Category = category;
+        }
+
         return spend (options);
 
     }
