@@ -242,8 +242,8 @@ namespace BoostPOW {
         return Redeemers.size ();
     }
     
-    void manager::run() {    
-        while(true) {
+    void manager::run () {
+        while (true) {
             std::cout << "calling API" << std::endl;
             try {
                 update_jobs (Net.jobs (100));
@@ -253,6 +253,8 @@ namespace BoostPOW {
                     "://" << exception.Request.Host << exception.Request.Path << 
                     "\n\theaders: " << exception.Request.Headers << 
                     "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
+            } catch (const std::exception &exception) {
+                std::cout << "Problem: " << exception.what () << std::endl;
             }
             
             std::this_thread::sleep_for (std::chrono::seconds (90));
