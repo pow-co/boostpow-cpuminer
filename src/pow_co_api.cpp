@@ -114,7 +114,7 @@ bool pow_co::broadcast (const bytes &tx) {
     }
 }
 
-Boost::prevout pow_co::job(const Bitcoin::txid &txid) {
+Boost::prevout pow_co::job (const Bitcoin::txid &txid) {
     std::stringstream hash_stream;
     hash_stream << txid;
     
@@ -154,14 +154,67 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
     return read_job (JSON::parse (response.Body)["job"], request, response);
 }
 
+bool pow_co::websockets_protocol_message::valid (const JSON &j) {
+    return j.is_object () &&
+        j.contains ("type") && j["type"].is_string () &&
+        j.contains ("content");
+}
+
+std::optional<Boost::prevout> pow_co::websockets_protocol_message::job_created (const JSON &j) {
+    if (!(j.is_object () &&
+        j.contains ("txid") && j["txid"].is_string () &&
+        j.contains ("script") && j["script"].is_string () &&
+        j.contains ("vout") && j["vout"].is_number_unsigned () &&
+        j.contains ("value") && j["value"].is_number_unsigned ())) return {};
+
+    auto hex_decoded = encoding::hex::read (string (j["script"]));
+    if (hex_decoded == nullptr) return {};
+
+    auto output_script = Boost::output_script::read (*hex_decoded);
+    if (!output_script.valid ()) return {};
+
+    Bitcoin::txid txid {string {"0x"} + string (j["txid"])};
+    if (!txid.valid ()) return {};
+
+    return Boost::prevout {
+        Bitcoin::outpoint {txid, uint32 (j["vout"])},
+        Boost::output {int64 (j["value"]), output_script}};
+}
+
+std::optional<Bitcoin::outpoint> pow_co::websockets_protocol_message::proof_created (const JSON &j) {
+    if (!(j.is_object () &&
+        j.contains ("job_txid") && j["job_txid"].is_string () &&
+        j.contains ("job_vout") && j["job_vout"].is_number_unsigned ())) return {};
+
+    Bitcoin::txid txid {string {"0x"} + string (j["job_txid"])};
+    if (!txid.valid ()) return {};
+
+    return Bitcoin::outpoint {txid, uint32 (j["job_vout"])};
+}
+
 void pow_co::connect (
         net::asio::error_handler error_handler,
-        net::interaction<const JSON &> interact,
-        net::close_handler closed) {
-    net::open_JSON_session ([] (parse_error err) -> void {
-        throw err;
-    }, [&io = this->IO, url = net::URL {net::protocol::WS, 5201, this->REST.Host, string {"/"}}, ssl = this->SSL.get (), error_handler]
-        (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
-        net::websocket::open (io, url, ssl, error_handler, closed, interact);
-    }, interact, closed);
+        net::close_handler closed,
+        function<ptr<websockets_protocol_handlers> (ptr<net::session<const JSON &>>)> interact) {
+
+    net::open_JSON_session ([] (const JSON::exception &err) -> void {
+            throw err;
+        }, [
+            url = net::URL {net::protocol::WS, "5201", this->REST.Host, "/"},
+            &io = this->IO, ssl = this->SSL, error_handler
+        ] (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
+            net::websocket::open (io, url, ssl.get(), error_handler, closed, interact);
+        }, closed, [interact] (ptr<net::session<const JSON &>> sx) -> handler<const JSON &> {
+            std::cout << "zoob zoob zoob zub" << std::endl;
+            return [handlers = interact (sx)] (const JSON &j) {
+                std::cout << "websockets message received " << j << std::endl;
+                if (!websockets_protocol_message::valid (j)) std::cout << "invalid websockets message received: " << j << std::endl;
+                else if (j["type"] == "boostpow.job.created") {
+                    auto prev = websockets_protocol_message::job_created (j["content"]);
+                    if (prev) handlers->job_created (*prev);
+                    else std::cout << "could not read websockets message " << j["content"] << std::endl;
+                } else std::cout << "unknown message received: " << j << std::endl;
+            };
+        }
+    );
 }

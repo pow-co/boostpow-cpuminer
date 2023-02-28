@@ -5,6 +5,9 @@
 #include <logger.hpp>
 #include <math.h>
 
+
+#include <data/net/websocket.hpp>
+
 namespace BoostPOW {
     using uint256 = Gigamonkey::uint256;
 
@@ -53,15 +56,15 @@ namespace BoostPOW {
     
     std::map<digest256, working>::iterator random_select (random &r, jobs &j, double minimum_profitability) {
         
-        if (j.size () == 0) return {};
+        if (j.Jobs.size () == 0) return {};
         
         double normalization = 0;
-        for (const auto &p : j) normalization += p.second.weight (minimum_profitability, .025);
-        if (normalization == 0) return j.end ();
+        for (const auto &p : j.Jobs) normalization += p.second.weight (minimum_profitability, .025);
+        if (normalization == 0) return j.Jobs.end ();
         double random = r.range01 () * normalization;
         
         double accumulated_profitability = 0;
-        for (auto it = j.begin (); it != j.end (); it++) {
+        for (auto it = j.Jobs.begin (); it != j.Jobs.end (); it++) {
             accumulated_profitability += it->second.weight (minimum_profitability, .025);
             
             if (accumulated_profitability >= random) return it;
@@ -142,7 +145,7 @@ namespace BoostPOW {
         
         using namespace Bitcoin;
         std::cout << "mining on script " << puzzle.id () << std::endl;
-        if (!puzzle.valid ()) throw string {"Boost puzzle is not valid"};
+        if (!puzzle.valid ()) throw data::exception {"Boost puzzle is not valid"};
         
         Bitcoin::satoshi value = puzzle.value ();
         
@@ -164,7 +167,7 @@ namespace BoostPOW {
         
         Bitcoin::satoshi fee {int64 (ceil (fee_rate * estimate_size (puzzle.expected_size (), pay_script.size ())))};
         
-        if (fee > value) throw string {"Cannot pay tx fee with boost output"};
+        if (fee > value) throw data::exception {"Cannot pay tx fee with boost output"};
         
         return redeem_puzzle (puzzle, proof.Solution, {output {value - fee, pay_script}});
         
@@ -243,12 +246,14 @@ namespace BoostPOW {
     }
     
     void manager::run () {
+        boost::asio::steady_timer timer (Net.IO);
 
         // we will call the API every few minutes.
-        function<void (boost::system::error_code)> periodically = [self = this->shared_from_this (), &periodically]
+        function<void (boost::system::error_code)> periodically =
+            [self = this->shared_from_this (), &periodically, &timer]
             (boost::system::error_code err) {
             if (err) throw exception {} << "unknown error: " << err;
-
+                std::cout << "About to call jobs API " << std::endl;
             try {
                 self->update_jobs (self->Net.jobs (100));
             } catch (const net::HTTP::exception &exception) {
@@ -264,31 +269,69 @@ namespace BoostPOW {
                 return;
             }
 
-            boost::asio::steady_timer t (self->Net.IO);
-            t.expires_after (std::chrono::seconds (180));
-
-            t.async_wait (periodically);
+            std::cout << "about to wait another 15 minutes" << std::endl;
+            timer.expires_after (boost::asio::chrono::seconds (1800));
+            timer.async_wait (periodically);
         };
 
-        // get started.
-        periodically (boost::system::error_code {});
+        struct handlers : pow_co::websockets_protocol_handlers {
+            manager &Manager;
 
-        std::cout << "set up websockets..." << std::endl;
+            handlers (manager &m) : Manager {m} {}
+
+            void job_created (const Boost::prevout &p) {
+                std::cout << "new boost prevout received via websockets: " << p << std::endl;
+                Manager.new_job (p);
+            };
+        };
 
         try {
+            std::cout << "making initial jobs call " << std::endl;
+
+            // get started.
+            periodically (boost::system::error_code {});
+
+            std::cout << "set up websockets..." << std::endl;
 
             // set up websockets.
+/*
             Net.PowCo.connect ([] (boost::system::error_code err) {
-                throw exception {} << "websockets error " << err;
-            }, [] (ptr<net::session<const JSON &>> o) {
-                return [] (const JSON &j) {
-                    std::cout << "websockets message received: " << j << std::endl;
-                };
-            }, [] () {});
+                    throw exception {} << "websockets error " << err;
+                },
+                [] () {},
+                [self = this->shared_from_this ()] (ptr<net::session<const JSON &>> o) {
+                    std::cout << "setting up handlers for websockets" << std::endl;
+                    return std::static_pointer_cast<pow_co::websockets_protocol_handlers> (
+                        ptr<handlers> {new handlers {*self}});
+                });*/
+
+            net::websocket::open (Net.IO,
+                net::URL {net::protocol::WS, "5201", "pow.co", "/"},
+                nullptr,
+                [] (boost::system::error_code err) {
+                    throw exception {} << "websockets error " << err;
+                }, [] () {},
+                [self = this->shared_from_this ()] (ptr<net::session<const string &>> o) {
+                    return [self] (string_view x) {
+                        auto j = JSON::parse (x);
+                        std::cout << "read websockets message " << j << std::endl;
+                        if (!pow_co::websockets_protocol_message::valid (j))
+                            std::cout << "invalid websockets message received: " << j << std::endl;
+                        else if (j["type"] == "boostpow.job.created") {
+                            if (auto prevout = pow_co::websockets_protocol_message::job_created (j["content"]);
+                                bool (prevout)) self->new_job (*prevout);
+                            else std::cout << "could not read websockets message " << j["content"] << std::endl;
+                        } else if (j["type"] == "boostpow.proof.created") {
+                            if (auto outpoint = pow_co::websockets_protocol_message::proof_created (j["content"]);
+                                bool (outpoint)) self->solved_job (*outpoint);
+                            else std::cout << "could not read websockets message " << j["content"] << std::endl;
+                        } else std::cout << "unknown message received: " << j << std::endl;
+                    };
+                });
 
             Net.IO.run ();
         } catch (const std::exception &e) {
-            std::cout << "caught exception " << e.what () << std::endl;
+            std::cout << "caught exception: " << e.what () << std::endl;
         } catch (...) {
             std::cout << "caught some kind of other thing" << std::endl;
         }
@@ -297,9 +340,9 @@ namespace BoostPOW {
     
     void manager::select_job (int i) {
         
-        if (Jobs.size () == 0) throw exception {"Warning: jobs is empty"};
+        if (Jobs.Jobs.size () == 0) throw exception {"Warning: jobs is empty"};
         auto selected = random_select (Random, Jobs, MinProfitability);
-        if (selected == Jobs.end ()) {
+        if (selected == Jobs.Jobs.end ()) {
 
             logger::log ("worker.resting", JSON {
                 {"thread", JSON (i)}
@@ -324,44 +367,74 @@ namespace BoostPOW {
         }
         
     }
+
+    void manager::new_job (const Boost::prevout &p) {
+        std::unique_lock<std::mutex> lock (Mutex);
+
+        Jobs.add_prevout (p);
+        std::cout << "new job added" << std::endl;
+    }
+
+    void manager::solved_job (const Bitcoin::outpoint &o) {
+        std::unique_lock<std::mutex> lock (Mutex);
+
+        if (auto x = Jobs.Scripts.find (o); x != Jobs.Scripts.end ()) {
+            if (auto w = Jobs.Jobs.find (x->second); w != Jobs.Jobs.end ()) {
+                if (data::size (w->second.Prevouts) == 1) {
+                    auto workers = w->second.Workers;
+                    Jobs.Jobs.erase (w);
+                    for (int i : workers) select_job (i);
+                } else {
+                    set<Boost::candidate::prevout> new_prevouts {};
+                    for (const auto &p : w->second.Prevouts.values ())
+                        if (static_cast<Bitcoin::outpoint> (p) != o) new_prevouts = new_prevouts.insert (p);
+                    w->second.Prevouts = new_prevouts;
+                }
+
+            }
+
+            Jobs.Scripts.erase (x);
+        }
+
+    }
     
     void manager::update_jobs (const BoostPOW::jobs &j) {
         std::unique_lock<std::mutex> lock (Mutex);
         
         Jobs = j;
-        uint32 count_jobs = Jobs.size ();
+        uint32 count_jobs = Jobs.Jobs.size ();
         if (count_jobs == 0) return;
         
         // remove jobs that are too difficult. 
         if (MaxDifficulty > 0) {
-            for (auto it = Jobs.cbegin (); it != Jobs.cend ();)
+            for (auto it = Jobs.Jobs.cbegin (); it != Jobs.Jobs.cend ();)
                 if (it->second.difficulty () > MaxDifficulty)
-                    it = Jobs.erase (it);
+                    it = Jobs.Jobs.erase (it);
                 else ++it;
             
-            std::cout << (count_jobs - Jobs.size ()) << " jobs removed due to high difficulty." << std::endl;
+            std::cout << (count_jobs - Jobs.Jobs.size ()) << " jobs removed due to high difficulty." << std::endl;
         }
         
         uint32 unprofitable_jobs = 0;
-        for (auto it = Jobs.cbegin (); it != Jobs.cend ();)
+        for (auto it = Jobs.Jobs.cbegin (); it != Jobs.Jobs.cend ();)
             if (it->second.profitability () < MinProfitability) {
                 unprofitable_jobs++;
-                it = Jobs.erase (it);
+                it = Jobs.Jobs.erase (it);
             } else it++;
         
-        uint32 profitable_jobs = Jobs.size ();
+        uint32 profitable_jobs = Jobs.Jobs.size ();
         std::cout << "found " << unprofitable_jobs << " unprofitable jobs. " << profitable_jobs << " jobs remaining " << std::endl;
 
         if (profitable_jobs == 0) return;
 
         uint32 contract_jobs = 0;
         uint32 impossible_contract_jobs = 0;
-        for (auto it = Jobs.cbegin (); it != Jobs.cend ();)
+        for (auto it = Jobs.Jobs.cbegin (); it != Jobs.Jobs.cend ();)
             if (it->second.Script.Type == Boost::contract) {
                 contract_jobs++;
                 if (!Keys[it->second.Script.MinerPubkeyHash].valid ()) {
                     impossible_contract_jobs++;
-                    it = Jobs.erase (it);
+                    it = Jobs.Jobs.erase (it);
                 } else it++;
             } else it++;
 
@@ -375,7 +448,7 @@ namespace BoostPOW {
         for (int i = 1; i <= Redeemers.size (); i++) select_job (i);
     }
     
-    void manager::submit(const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) {
+    void manager::submit (const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) {
         
         std::unique_lock<std::mutex> lock (Mutex);
         double fee_rate {Fees.get ()};
@@ -388,12 +461,12 @@ namespace BoostPOW {
         if (fee_rate <= .0001) throw "error: fee rate too small";
         Bitcoin::satoshi fee {int64 (ceil (fee_rate * estimated_size))};
         
-        if (fee > value) throw string {"Cannot pay tx fee with boost output"};
+        if (fee > value) throw data::exception {"Cannot pay tx fee with boost output"};
         
-        auto redeem_tx = BoostPOW::redeem_puzzle (puzzle.second, solution, {Bitcoin::output{value - fee, pay_script}});
+        auto redeem_tx = BoostPOW::redeem_puzzle (puzzle.second, solution, {Bitcoin::output {value - fee, pay_script}});
         
-        auto w = Jobs.find (puzzle.first);
-        if (w != Jobs.end ()) {
+        auto w = Jobs.Jobs.find (puzzle.first);
+        if (w != Jobs.Jobs.end ()) {
 
             auto redeem_bytes = bytes (redeem_tx);
             
@@ -405,7 +478,7 @@ namespace BoostPOW {
             if (!Net.broadcast_solution (redeem_bytes)) std::cout << "broadcast failed!" << std::endl;
             
             auto workers = w->second.Workers;
-            Jobs.erase (w);
+            Jobs.Jobs.erase (w);
             for (int i : workers) select_job (i);
         }
         

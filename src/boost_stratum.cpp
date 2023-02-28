@@ -1,12 +1,12 @@
 #include <stratum.hpp>
 #include <boost/program_options.hpp>
 
-int command_connect(int arg_count, char** arg_values) {
-    throw string {"function doesn't function"};
+int command_connect (int arg_count, char** arg_values) {
+    throw data::exception {"function doesn't function"};
 }
 
-int command_serve(int arg_count, char** arg_values) {
-    throw string {"function doesn't function"};
+int command_serve (int arg_count, char** arg_values) {
+    throw data::exception {"function doesn't function"};
 }
 
 int help() {

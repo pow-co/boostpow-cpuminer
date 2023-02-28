@@ -119,7 +119,7 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
 
         Bitcoin::satoshi fee {int64 (ceil (fee_rate * estimated_size))};
         
-        if (fee > value) throw string {"Cannot pay tx fee with boost output"};
+        if (fee > value) throw data::exception {"Cannot pay tx fee with boost output"};
         
         auto redeem_tx = BoostPOW::redeem_puzzle (puzzle.second, solution, {Bitcoin::output {value - fee, pay_script}});
         
