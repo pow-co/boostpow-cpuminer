@@ -134,7 +134,7 @@ namespace BoostPOW {
             redeemer (manager *m) : BoostPOW::redeemer {}, Manager {m} {}
             
             void submit (const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
-                Manager->submit(puzzle, solution);
+                Manager->submit (puzzle, solution);
             }
             
             virtual ~redeemer () {}
@@ -154,6 +154,9 @@ namespace BoostPOW {
         void update_jobs (const BoostPOW::jobs &j);
         
         int add_new_miner (ptr<redeemer>);
+
+        void new_job (const Boost::prevout &p);
+        void solved_job (const Bitcoin::outpoint &p);
         
         virtual ~manager () {}
         

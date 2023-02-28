@@ -24,10 +24,10 @@ struct UTXO {
     
 };
 
-struct whatsonchain : net::HTTP::client {
+struct whatsonchain : net::HTTP::client_blocking {
     whatsonchain (ptr<net::HTTP::SSL> ssl) :
-        net::HTTP::client {ssl, net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
-    whatsonchain (): net::HTTP::client {net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter{3, 1}} {}
+        net::HTTP::client_blocking {ssl, net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter {3, 1}} {}
+    whatsonchain (): net::HTTP::client_blocking {net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter {3, 1}} {}
     
     struct addresses {
         struct balance {

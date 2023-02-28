@@ -1,7 +1,7 @@
 from conans import ConanFile, CMake
 
 
-class BoostMinerConan(ConanFile):
+class BoostMinerConan (ConanFile):
     name = "BoostMiner"
     version = "0.2.5"
     license = "Proprietary"
@@ -14,16 +14,16 @@ class BoostMinerConan(ConanFile):
     default_options = {"shared": False, "fPIC": True}
     generators = "cmake"
     exports_sources = "src/*"
-    requires = ["argh/1.3.2", "gigamonkey/v0.0.12@proofofwork/stable", "gtest/1.12.1"]
+    requires = ["argh/1.3.2", "Gigamonkey/v0.0.13@proofofwork/stable", "gtest/1.12.1"]
 
-    def config_options(self):
+    def config_options (self):
         if self.settings.os == "Windows":
             del self.options.fPIC
 
-    def build(self):
-        cmake = CMake(self)
-        cmake.configure()
-        cmake.build()
+    def build (self):
+        cmake = CMake (self)
+        cmake.configure ()
+        cmake.build ()
 
-    def package(self):
-        self.copy("BoostMiner", dst="bin", keep_path=False)
+    def package (self):
+        self.copy ("BoostMiner", dst="bin", keep_path=False)

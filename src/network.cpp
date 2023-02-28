@@ -115,7 +115,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
     
         digest256 script_hash = job.id ();
         
-        if (auto j = Jobs.find (script_hash); j != Jobs.end ()) {
+        if (auto j = Jobs.Jobs.find (script_hash); j != Jobs.Jobs.end ()) {
             
             bool closed_job = true;
             for (const auto &u : j->second.Prevouts.values ()) if (static_cast<Bitcoin::outpoint> (u) == job.outpoint ()) {
@@ -136,8 +136,8 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
         bool match_found = false;
         
         for (auto const &u : script_utxos) {
-            Boost::prevout p {u.Outpoint, Boost::output {u.Value, job.script ()}};
-            Jobs.add_prevout (script_hash, p);
+            Boost::prevout p {u.Outpoint, Boost::output {u.Value, job.script (), script_hash}};
+            Jobs.add_prevout (p);
             
             if (u.Outpoint == job.outpoint ()) match_found = true;
         }
@@ -149,8 +149,8 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
     uint32 count_jobs_with_multiple_outputs = 0;
     uint32 count_open_jobs = 0;
     
-    for (auto it = Jobs.cbegin (); it != Jobs.cend ();)
-        if (it->second.Prevouts.size () == 0) it = Jobs.erase (it);
+    for (auto it = Jobs.Jobs.cbegin (); it != Jobs.Jobs.cend ();)
+        if (it->second.Prevouts.size () == 0) it = Jobs.Jobs.erase (it);
         else {
             count_open_jobs++;
             if (it->second.Prevouts.size () > 1) count_jobs_with_multiple_outputs++;

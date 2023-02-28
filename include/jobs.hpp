@@ -27,10 +27,12 @@ namespace BoostPOW {
         }
     };
     
-    struct jobs : std::map<digest256, working> {
+    struct jobs {
+        std::map<digest256, working> Jobs;
+        std::map<Bitcoin::outpoint, digest256> Scripts;
         
         digest256 add_script (const Boost::output_script &z);
-        void add_prevout (const digest256 &script_hash, const Boost::prevout &u);
+        void add_prevout (const Boost::prevout &u);
         
         explicit operator JSON () const;
         
