@@ -37,7 +37,7 @@ RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
 #data
 WORKDIR /home
 RUN rm -rf data
-RUN git clone --depth 1 --branch production https://github.com/DanielKrawisz/data.git
+RUN git clone --depth 1 --branch sessions https://github.com/DanielKrawisz/data.git
 WORKDIR /home/data
 RUN conan install .
 RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
@@ -45,7 +45,7 @@ RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
 #gigamonkey
 WORKDIR /home
 RUN rm -rf Gigamonkey
-RUN git clone --depth 1 --branch production https://github.com/Gigamonkey-BSV/Gigamonkey.git
+RUN git clone --depth 1 --branch sessions https://github.com/Gigamonkey-BSV/Gigamonkey.git
 WORKDIR /home/Gigamonkey
 RUN conan install .
 RUN CONAN_CPU_COUNT=1 conan create . proofofwork/stable
