@@ -3,7 +3,6 @@
 
 #include <gigamonkey/schema/keysource.hpp>
 #include <gigamonkey/work/solver.hpp>
-#include <random.hpp>
 #include <network.hpp>
 #include <thread>
 #include <condition_variable>
@@ -179,6 +178,8 @@ namespace BoostPOW {
         jobs Jobs;
         
         std::vector<ptr<redeemer>> Redeemers;
+
+        bool Mining;
         
         void select_job (int i);
         

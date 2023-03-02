@@ -118,30 +118,30 @@ int command_boost(int arg_count, char** arg_values) {
     
     string arg_content{arg_values[2]};
     
-    digest256 content{arg_content};
-    if (!content.valid()) throw data::exception{} << "could not read content: " << arg_content;
+    digest256 content {arg_content};
+    if (!content.valid ()) throw data::exception {} << "could not read content: " << arg_content;
     
     double diff = 0;
-    string difficulty_input{arg_values[3]};
-    std::stringstream diff_stream{difficulty_input};
+    string difficulty_input {arg_values[3]};
+    std::stringstream diff_stream {difficulty_input};
     diff_stream >> diff;
     
-    work::compact target{work::difficulty{diff}};
-    if (!target.valid()) throw data::exception{} << "could not read difficulty: " << difficulty_input;
+    work::compact target {work::difficulty {diff}};
+    if (!target.valid ()) throw data::exception{} << "could not read difficulty: " << difficulty_input;
     
     bytes topic{};
-    bytes additional_data{};
+    bytes additional_data {};
     
     if (arg_count > 4) {
     
-        ptr<bytes> topic_read = encoding::hex::read(string{arg_values[4]});
-        if (topic_read == nullptr || topic_read->size() > 20) throw data::exception{} << "could not read topic: " << arg_values[4];
+        ptr<bytes> topic_read = encoding::hex::read (string {arg_values[4]});
+        if (topic_read == nullptr || topic_read->size () > 20) throw data::exception{} << "could not read topic: " << arg_values[4];
         topic = *topic_read;
     }
     
     if (arg_count > 5) {
-        ptr<bytes> add_data = encoding::hex::read(string{arg_values[5]});
-        if (add_data == nullptr) throw data::exception{} << "could not read additional_data: " << arg_values[5];
+        ptr<bytes> add_data = encoding::hex::read (string {arg_values[5]});
+        if (add_data == nullptr) throw data::exception {} << "could not read additional_data: " << arg_values[5];
         additional_data = *add_data;
     }
     
@@ -150,19 +150,19 @@ int command_boost(int arg_count, char** arg_values) {
     if (arg_count > 6) {
         string boost_type{arg_values[6]};
         if (boost_type == "contract") type = Boost::contract;
-        else if (boost_type != "bounty") throw data::exception{} << "could not boost type: " << arg_values[6];
+        else if (boost_type != "bounty") throw data::exception {} << "could not boost type: " << arg_values[6];
         
     }
     
     if (type == Boost::contract) throw data::exception {"We do not do boost contract yet"};
     
-    Boost::output_script boost_output_script = Boost::output_script::bounty(
+    Boost::output_script boost_output_script = Boost::output_script::bounty (
         0, content, target, topic, 
-        BoostPOW::casual_random {}.uint32(),
+        BoostPOW::casual_random {}.uint32 (),
         additional_data, false);
     
     Boost::output boost_output {value, boost_output_script};
-    auto bitcoin_output = Bitcoin::output(boost_output);
+    auto bitcoin_output = Bitcoin::output (boost_output);
     
     auto spend = w.spend (bitcoin_output);
     
@@ -173,7 +173,7 @@ int command_boost(int arg_count, char** arg_values) {
         boost_output_index++;
     }
     
-    if (boost_output_index == spend.Transaction.Outputs.size()) throw data::exception {"could not find boost output index"};
+    if (boost_output_index == spend.Transaction.Outputs.size ()) throw data::exception {"could not find boost output index"};
     
     BoostPOW::network net {};
     
