@@ -3,6 +3,7 @@
 
 #include <gigamonkey/boost/boost.hpp>
 #include <gigamonkey/schema/keysource.hpp>
+#include <random.hpp>
 
 namespace BoostPOW {
     using namespace Gigamonkey;
@@ -15,16 +16,7 @@ namespace BoostPOW {
         working (): Boost::candidate {}, Workers {} {}
         
         // used to select random jobs. 
-        double weight (double minimum_profitability, double tilt) const {
-            if (this->profitability () < minimum_profitability) return 0;
-            
-            double factor = this->difficulty () / (this->difficulty () + tilt);
-            
-            double weight = 1;
-            for (int i = 0; i < this->Workers.size (); i++) weight *= factor;
-            
-            return weight * (this->profitability () - minimum_profitability);
-        }
+        double weight (double minimum_profitability, double tilt) const;
     };
     
     struct jobs {
@@ -33,11 +25,16 @@ namespace BoostPOW {
         
         digest256 add_script (const Boost::output_script &z);
         void add_prevout (const Boost::prevout &u);
+
+        uint32 remove (function<bool (const working &)>);
+
+        std::map<digest256, working>::iterator random_select (random &r, double minimum_profitability);
         
         explicit operator JSON () const;
         
     };
 
+    // keep track of keys that have been used so that we can find a key from an address later.
     struct map_key_database final : key_source {
         ptr<key_source> Keys;
         uint32 MaxLookAhead;
@@ -48,39 +45,9 @@ namespace BoostPOW {
         explicit map_key_database (ptr<key_source> keys, uint32 max_look_ahead = 0) :
             Keys {keys}, MaxLookAhead {max_look_ahead}, Past {}, Next {} {}
 
-        Bitcoin::secret next () override {
-            if (data::size (Next) != 0) {
-                auto n = data::first (Next);
-                Next = data::rest (Next);
-                return n;
-            }
+        Bitcoin::secret next () override;
 
-            Bitcoin::secret n = Keys->next ();
-            digest160 a = Bitcoin::Hash160 (n.to_public ());
-
-            if (!Past.contains (a)) Past = Past.insert (a, n);
-
-            return n;
-        }
-
-        Bitcoin::secret operator [] (const digest160 &addr) {
-            auto x = Past.contains (addr);
-            if (x) return *x;
-
-            while (data::size (Next) < MaxLookAhead) {
-
-                Bitcoin::secret n = Keys->next ();
-                digest160 a = Bitcoin::Hash160 (n.to_public ());
-
-                Next = Next.append (n);
-
-                if (!Past.contains (a)) {
-                    Past = Past.insert (a, n);
-                }
-            }
-
-            return Bitcoin::secret {};
-        }
+        Bitcoin::secret operator [] (const digest160 &addr);
 
     };
     
