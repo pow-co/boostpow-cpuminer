@@ -107,9 +107,14 @@ namespace BoostPOW {
         void mine (const std::pair<digest256, Boost::puzzle> &p);
         
         void wait_for_solution () {
-            std::unique_lock<std::mutex> lock (Mutex);
+            std::unique_lock<std::mutex> lock {Mutex};
             if (Solved) return;
             Out.wait (lock);
+        }
+
+        digest256 current () {
+            std::unique_lock<std::mutex> lock {Mutex};
+            return Current.first;
         }
         
     protected:
