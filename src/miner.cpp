@@ -290,7 +290,15 @@ namespace BoostPOW {
 
                 std::cout << "about to wait another 15 minutes" << std::endl;
             } else {
-                self->select_job (self->Random.uint32 (self->Redeemers.size () - 1));
+                uint32 reassign = self->Random.uint32 (self->Redeemers.size () - 1) + 1;
+
+                digest256 current_job = self->Redeemers[reassign - 1]->current ();
+                if (auto it = self->Jobs.Jobs.find (current_job); it != self->Jobs.Jobs.end ())
+                    it->second.Workers = data::select (it->second.Workers, [reassign](int x) -> bool {
+                        return x != reassign;
+                    });
+
+                self->select_job (reassign);
             }
 
             count++;
