@@ -56,19 +56,27 @@ bytes BoostPOW::network::get_transaction (const Bitcoin::txid &txid) {
     return tx;
 }
 
+// transactions by txid
+map<Bitcoin::txid, bytes> Transaction;
+
+// script histories by script hash
+map<digest256, list<Bitcoin::txid>> History;
+
 BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
     std::lock_guard<std::mutex> lock (Mutex);
-    const list<Boost::prevout> jobs_api_call {PowCo.jobs ()};
+    const list<Boost::prevout> jobs_api_call {PowCo.jobs (limit)};
     
     BoostPOW::jobs Jobs {};
     uint32 count_closed_jobs = 0;
-    std::map<digest256, list<Bitcoin::txid>> script_histories;
     json::array_t redemptions;
     
-    auto count_closed_job = [this, &count_closed_jobs, &script_histories, &redemptions] (const Boost::prevout &job) -> void {
+    // check on jobs that have been closed and are incorrectly being returned.
+    auto count_closed_job = [this, &count_closed_jobs, &redemptions] (const Boost::prevout &job) -> void {
         count_closed_jobs++;
         
         inpoint in;
+
+        // this usually doesn't work.
         try {
             in = PowCo.spends (job.outpoint ());
         } catch (const net::HTTP::exception &exception) {
@@ -80,29 +88,48 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
                 "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
         }
         
+        // if it fails, use whatsonchain.
         if (!in.valid ()) {
             auto script_hash = job.id ();
             
-            auto history = script_histories.find (script_hash);
+            auto history = History.contains (script_hash);
             
-            if (history == script_histories.end ()) {
-                script_histories[script_hash] = WhatsOnChain.script ().get_history (script_hash);
-                history = script_histories.find (script_hash);
+            if (!history) {
+                History = History.insert (script_hash, WhatsOnChain.script ().get_history (script_hash));
+                history = History.contains (script_hash);
             }
             
-            for (const Bitcoin::txid &history_txid : history->second) {
-                Bitcoin::transaction history_tx {get_transaction (history_txid)};
-                if (!history_tx.valid ()) continue;
+            for (const Bitcoin::txid &redeem_txid : *history) {
+                Bitcoin::transaction redeem_tx;
+
+                auto tx = Transaction.contains (redeem_txid);
+                if (!tx) {
+                    redeem_tx = Bitcoin::transaction (get_transaction (redeem_txid));
+                    Transaction = Transaction.insert (redeem_txid, bytes (redeem_tx));
+                } else redeem_tx = Bitcoin::transaction (*tx);
+
+                if (!redeem_tx.valid ()) continue;
                 
                 uint32 ii = 0;
-                for (const Bitcoin::input &in: history_tx.Inputs) if (in.Reference == job.outpoint()) {
+                for (const Bitcoin::input &in: redeem_tx.Inputs) if (in.Reference == job.outpoint ()) {
+
+                    bytes spend_tx;
+
+                    auto tx = Transaction.contains (in.Reference.Digest);
+                    if (!tx) {
+                        spend_tx = get_transaction (in.Reference.Digest);
+                        Transaction = Transaction.insert (in.Reference.Digest, spend_tx);
+                    } else spend_tx = *tx;
                     
                     redemptions.push_back (json {
                         {"outpoint", write (job.outpoint ())},
-                        {"inpoint", write (Bitcoin::outpoint {history_txid, ii++})},
-                        {"script_hash", write (script_hash)}});
+                        {"inpoint", write (Bitcoin::outpoint {redeem_txid, ii++})},
+                        {"script_hash", write (script_hash)}/*,
+                        {"spend", encoding::hex::write (spend_tx)},
+                        {"redeem", encoding::hex::write (bytes (redeem_tx))}*/
+                    });
                     
-                    PowCo.submit_proof (bytes (history_tx));
+                    PowCo.submit_proof (bytes (redeem_tx));
                     break;
                 }
                 

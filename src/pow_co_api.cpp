@@ -29,7 +29,6 @@ Boost::prevout read_job (const JSON &job,
 list<Boost::prevout> pow_co::jobs (uint32 limit) {
     std::stringstream ss;
     ss << limit;
-    
     auto request = this->REST.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
     auto response = this->operator () (request);
     

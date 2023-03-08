@@ -270,11 +270,11 @@ namespace BoostPOW {
             (boost::system::error_code err) {
             if (err) throw exception {} << "unknown error: " << err;
 
-            if (count % 30 == 0) {
+            if (count % 60 == 0) {
 
                 std::cout << "About to call jobs API " << std::endl;
                 try {
-                    self->update_jobs (self->Net.jobs (100));
+                    self->update_jobs (self->Net.jobs (300));
                 } catch (const net::HTTP::exception &exception) {
                     std::cout << "API problem: " << exception.what () <<
                         "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
@@ -288,13 +288,13 @@ namespace BoostPOW {
                     return;
                 }
 
-                std::cout << "about to wait another 15 minutes" << std::endl;
+                std::cout << "about to wait another half hour" << std::endl;
             } else {
                 uint32 reassign = self->Random.uint32 (self->Redeemers.size () - 1) + 1;
 
                 digest256 current_job = self->Redeemers[reassign - 1]->current ();
                 if (auto it = self->Jobs.Jobs.find (current_job); it != self->Jobs.Jobs.end ())
-                    it->second.Workers = data::select (it->second.Workers, [reassign](int x) -> bool {
+                    it->second.Workers = data::select (it->second.Workers, [reassign] (int x) -> bool {
                         return x != reassign;
                     });
 
@@ -315,6 +315,20 @@ namespace BoostPOW {
                 std::cout << "new boost prevout received via websockets: " << p << std::endl;
                 Manager.new_job (p);
             };
+        };
+
+        auto read_json = [] (string_view x) -> JSON {
+            try {
+                auto j = JSON::parse (x);
+                std::cout << "parsed as JSON: " << j << std::endl;
+                return j;
+            } catch (const JSON::exception &x) {
+                std::cout << "JSON parse error: " << x.what () << std::endl;
+            }
+        };
+
+        auto write_json = [] (const JSON &j) -> string {
+            return j.dump ();
         };
 
         try {
@@ -342,11 +356,13 @@ namespace BoostPOW {
                 nullptr,
                 [] (boost::system::error_code err) {
                     throw exception {} << "websockets error " << err;
-                }, [] () {},
+                }, [] () {
+                    std::cout << "websockets closed..." << std::endl;
+                },
                 [self = this->shared_from_this ()] (ptr<net::session<const string &>> o) {
                     return [self] (string_view x) {
+                        std::cout << "read websockets message " << x << std::endl;
                         auto j = JSON::parse (x);
-                        std::cout << "read websockets message " << j << std::endl;
                         if (!pow_co::websockets_protocol_message::valid (j))
                             std::cout << "invalid websockets message received: " << j << std::endl;
                         else if (j["type"] == "boostpow.job.created") {
