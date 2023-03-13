@@ -184,7 +184,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
             ++it;
         }
     
-    logger::log("api.jobs.report", json {
+    logger::log ("api.jobs.report", json {
         {"jobs_returned_by_API", jobs_api_call.size ()},
         {"jobs_not_already_redeemed", count_open_jobs}, 
         {"jobs_already_redeemed", count_closed_jobs}, 
