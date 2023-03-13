@@ -31,7 +31,7 @@ namespace BoostPOW {
         
         uint32 begin {Bitcoin::timestamp::now ()};
         
-        while(true) {
+        while (true) {
             uint256 hash = pr.string ().hash ();
             total_hashes++;
             
@@ -270,7 +270,7 @@ namespace BoostPOW {
             (boost::system::error_code err) {
             if (err) throw exception {} << "unknown error: " << err;
 
-            if (count % 60 == 0) {
+            if (count % 3 == 0) {
 
                 std::cout << "About to call jobs API " << std::endl;
                 try {

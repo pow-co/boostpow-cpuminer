@@ -9,7 +9,7 @@ namespace logger {
 
     boost::posix_time::ptime timestamp { boost::posix_time::microsec_clock::universal_time() };
 
-    std::cout << json{{"event", event}, {"timestmap", to_iso_extended_string(timestamp)}, {"message", j} }.dump() << std::endl;
+    std::cout << json{{"event", event}, {"timestamp", to_iso_extended_string(timestamp)}, {"message", j} }.dump() << std::endl;
 
   }
 
