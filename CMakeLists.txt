@@ -1,9 +1,7 @@
 cmake_minimum_required (VERSION 3.16)
 project (BoostMiner CXX)
 
-# Setup paths to outputs of conan's "cmake_find_package" generator
-include (${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
-conan_basic_setup (TARGETS)
+
 
 add_library (bm STATIC
     src/whatsonchain_api.cpp 
@@ -12,15 +10,18 @@ add_library (bm STATIC
     src/network.cpp
     src/logger.cpp 
     src/jobs.cpp)
-    
+
+find_package(gigamonkey CONFIG REQUIRED)
+
 target_include_directories (bm PUBLIC include)
-target_link_libraries (bm PUBLIC CONAN_PKG::Gigamonkey)
+target_link_libraries (bm PUBLIC gigamonkey::gigamonkey data::data)
 target_compile_features (bm PUBLIC cxx_std_20)
 set_target_properties (bm PROPERTIES CXX_EXTENSIONS OFF)
 
 add_executable (BoostMiner src/boost_miner.cpp src/miner_options.cpp)
 
-target_link_libraries (BoostMiner PUBLIC bm CONAN_PKG::argh)
+find_package(argh CONFIG REQUIRED)
+target_link_libraries (BoostMiner PUBLIC bm argh)
 target_include_directories (BoostMiner PUBLIC include)
 
 target_compile_features (BoostMiner PUBLIC cxx_std_20)
@@ -56,3 +57,6 @@ if (PACKAGE_TESTS)
   add_subdirectory(test)
 
 endif()
+
+
+install(TARGETS CosmosWallet BoostMiner)

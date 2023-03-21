@@ -1,0 +1,5 @@
+.idea/
+.vscode/
+CMakeUserPresets.json
+build/
+cmake-build-debug-11/
