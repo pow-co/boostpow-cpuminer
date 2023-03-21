@@ -2,6 +2,7 @@
 #include <miner.hpp>
 #include <logger.hpp>
 #include <mutex>
+#include <iomanip>
 
 std::mutex Mutex;
 
@@ -247,3 +248,27 @@ Boost::candidate BoostPOW::network::job(const Bitcoin::outpoint &o) {
     return x;
 }
 
+double BoostPOW::network::price (tm time) {
+
+    std::stringstream ss;
+    ss << time.tm_mday << "-" << (time.tm_mon + 1) << "-" << (time.tm_year + 1900) << std::endl;
+
+    string date = ss.str();
+
+    auto request = CoinGecko.REST.GET ("/api/v3/coins/bitcoin-cash-sv/history", {
+        entry<string, string> {"date", date },
+        entry<string, string> {"localization", "false" }
+    });
+
+    auto response = CoinGecko (request);
+
+    if (response.Status != net::HTTP::status::ok) {
+        std::stringstream z;
+        z << "status = \"" << response.Status << "\"; content_type = " <<
+            response.Headers[net::HTTP::header::content_type] << "; body = \"" << response.Body << "\"";
+        throw net::HTTP::exception {request, response, z.str ()};
+    }
+
+    JSON info = JSON::parse (response.Body);
+    return info["market_data"]["current_price"]["usd"];
+}

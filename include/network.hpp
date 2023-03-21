@@ -5,6 +5,7 @@
 #include <pow_co_api.hpp>
 #include <whatsonchain_api.hpp>
 #include <jobs.hpp>
+#include <ctime>
 
 using namespace Gigamonkey;
 
@@ -16,10 +17,12 @@ namespace BoostPOW {
         whatsonchain WhatsOnChain;
         pow_co PowCo;
         BitcoinAssociation::MAPI Gorilla;
+        net::HTTP::client_blocking CoinGecko;
         
         network (string api_host = "pow.co") : IO {}, SSL {std::make_shared<net::HTTP::SSL> (net::HTTP::SSL::tlsv12_client)},
             WhatsOnChain {SSL}, PowCo {IO, SSL, api_host},
-            Gorilla {net::HTTP::REST {"https", "mapi.gorillapool.io"}} {
+            Gorilla {net::HTTP::REST {"https", "mapi.gorillapool.io"}},
+            CoinGecko {net::HTTP::REST {"https", "api.coingecko.com"}, tools::rate_limiter {3, 1}} {
             SSL->set_default_verify_paths ();
             SSL->set_verify_mode (net::asio::ssl::verify_peer);
         }
@@ -53,6 +56,8 @@ namespace BoostPOW {
         broadcast_error broadcast (const bytes &tx);
 
         broadcast_error broadcast_solution (const bytes &tx);
+
+        double price (tm);
         
     };
     

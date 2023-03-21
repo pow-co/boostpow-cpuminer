@@ -164,3 +164,21 @@ bytes whatsonchain::transactions::get_raw (const Bitcoin::txid &txid) {
     if (tx == nullptr) return {};
     return *tx;
 }
+
+JSON whatsonchain::transactions::tx_data (const Bitcoin::txid &txid) {
+    std::stringstream ss;
+    ss << txid;
+
+    string call = string {"/v1/bsv/main/tx/hash/"} + ss.str ().substr (9, 64);
+
+    auto request = API.REST.GET (call);
+    auto response = API (request);
+
+    if (static_cast<unsigned int> (response.Status) == 404) return {};
+
+    if (response.Status != net::HTTP::status::ok)
+        throw net::HTTP::exception {request, response, "response status is not ok"};
+
+    return response.Body;
+}
+

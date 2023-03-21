@@ -56,7 +56,9 @@ struct whatsonchain : net::HTTP::client_blocking {
         bool broadcast (const bytes& tx);
         
         bytes get_raw (const Bitcoin::txid&);
-        
+
+        JSON tx_data (const Bitcoin::txid&);
+
         whatsonchain &API;
     };
     
