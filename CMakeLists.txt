@@ -46,6 +46,15 @@ target_include_directories (DetectBoost PUBLIC include)
 target_compile_features (DetectBoost PUBLIC cxx_std_20)
 set_target_properties (DetectBoost PROPERTIES CXX_EXTENSIONS OFF)
 
+add_executable (Taxes2022
+    src/taxes_2022.cpp)
+
+target_link_libraries (Taxes2022 PUBLIC bm)
+target_include_directories (Taxes2022 PUBLIC include)
+
+target_compile_features (Taxes2022 PUBLIC cxx_std_20)
+set_target_properties (Taxes2022 PROPERTIES CXX_EXTENSIONS OFF)
+
 option (PACKAGE_TESTS "Build the tests" ON)
 
 add_definitions ("-DHAS_BOOST")

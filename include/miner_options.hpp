@@ -53,7 +53,7 @@ namespace BoostPOW {
         std::optional<uint32> Category {};
     };
 
-    struct mining_options {
+    struct redeeming_options {
 
         ptr<map_key_database> SigningKeys {};
 
@@ -69,13 +69,20 @@ namespace BoostPOW {
         std::optional<string> APIHost {};
     };
 
+    struct mining_options : redeeming_options {
+        double MinProfitability {0};
+        double MaxDifficulty {-1};
+        bool Websockets {false};
+        uint32 RefreshInterval {90};
+    };
+
     // validate options and call the appropriate function.
     int run (const argh::parser &,
         int (*help) (),
         int (*version) (),
         int (*spend) (const script_options &),
-        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64, const mining_options &),
-        int (*mine) (double min_profitability, double max_difficulty, const mining_options &));
+        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64, const redeeming_options &),
+        int (*mine) (const mining_options &));
 }
 
 #endif

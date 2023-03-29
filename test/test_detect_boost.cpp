@@ -71,26 +71,26 @@ TEST(DetectBoostTest, TestDetectBoost) {
     
 }
 
-std::optional<std::string> run(std::string command) {
-    if (FILE *fp = popen(command.c_str(), "r"); fp != nullptr) {
+std::optional<std::string> run (std::string command) {
+    if (FILE *fp = popen (command.c_str (), "r"); fp != nullptr) {
     
         char buf[128];
         
         std::string result;
         
-        while (fgets(buf, 128, fp) != nullptr) 
+        while (fgets (buf, 128, fp) != nullptr)
             result += std::string{buf};
         
-        if (pclose(fp)) return {};
+        if (pclose (fp)) return {};
         return result;
         
-    } else throw data::exception{"could not open pipe"};
+    } else throw data::exception {"could not open pipe"};
 }
     
 std::string test_case::command() {
-    return std::string{"../bin/DetectBoost "} + Input; 
+    return std::string {"../test/DetectBoost "} + Input;
 }
     
 std::optional<std::string> test_case::run() {
-    return ::run(command());
+    return ::run (command ());
 }

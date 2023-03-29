@@ -251,24 +251,30 @@ Boost::candidate BoostPOW::network::job(const Bitcoin::outpoint &o) {
 double BoostPOW::network::price (tm time) {
 
     std::stringstream ss;
-    ss << time.tm_mday << "-" << (time.tm_mon + 1) << "-" << (time.tm_year + 1900) << std::endl;
+    ss << time.tm_mday << "-" << (time.tm_mon + 1) << "-" << (time.tm_year + 1900);
 
-    string date = ss.str();
+    string date = ss.str ();
+
+    std::cout << "   about to get BSV price in USD at date " << date << std::endl;
 
     auto request = CoinGecko.REST.GET ("/api/v3/coins/bitcoin-cash-sv/history", {
         entry<string, string> {"date", date },
         entry<string, string> {"localization", "false" }
     });
 
-    auto response = CoinGecko (request);
+    // the rate limitation for this call is hard to understand.
+    // If it doesn't work we wait 30 seconds.
+    while (true) {
 
-    if (response.Status != net::HTTP::status::ok) {
-        std::stringstream z;
-        z << "status = \"" << response.Status << "\"; content_type = " <<
-            response.Headers[net::HTTP::header::content_type] << "; body = \"" << response.Body << "\"";
-        throw net::HTTP::exception {request, response, z.str ()};
+        auto response = CoinGecko (request);
+
+        if (response.Status == net::HTTP::status::ok) {
+            JSON info = JSON::parse (response.Body);
+            return info["market_data"]["current_price"]["usd"];
+        }
+
+        net::asio::io_context io {};
+        net::asio::steady_timer {io, net::asio::chrono::seconds (30)}.wait ();
+
     }
-
-    JSON info = JSON::parse (response.Body);
-    return info["market_data"]["current_price"]["usd"];
 }

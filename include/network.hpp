@@ -22,7 +22,7 @@ namespace BoostPOW {
         network (string api_host = "pow.co") : IO {}, SSL {std::make_shared<net::HTTP::SSL> (net::HTTP::SSL::tlsv12_client)},
             WhatsOnChain {SSL}, PowCo {IO, SSL, api_host},
             Gorilla {net::HTTP::REST {"https", "mapi.gorillapool.io"}},
-            CoinGecko {net::HTTP::REST {"https", "api.coingecko.com"}, tools::rate_limiter {3, 1}} {
+            CoinGecko {net::HTTP::REST {"https", "api.coingecko.com"}, tools::rate_limiter {1, 10}} {
             SSL->set_default_verify_paths ();
             SSL->set_verify_mode (net::asio::ssl::verify_peer);
         }

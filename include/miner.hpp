@@ -149,11 +149,11 @@ namespace BoostPOW {
             fees &f,
             const map_key_database &keys,
             address_source &addresses,
-            uint64 random_seed, 
-            double maximum_difficulty, 
+            uint64 random_seed,
+            double maximum_difficulty,
             double minimum_profitability);
         
-        void run ();
+        void run (bool websockets, uint32 refresh_interval);
         
         void update_jobs (const BoostPOW::jobs &j);
         
