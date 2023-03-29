@@ -179,6 +179,6 @@ JSON whatsonchain::transactions::tx_data (const Bitcoin::txid &txid) {
     if (response.Status != net::HTTP::status::ok)
         throw net::HTTP::exception {request, response, "response status is not ok"};
 
-    return response.Body;
+    return JSON::parse (response.Body);
 }
 

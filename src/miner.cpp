@@ -260,17 +260,19 @@ namespace BoostPOW {
 
     }
     
-    void manager::run () {
+    void manager::run (bool websockets, uint32 refresh_interval) {
         boost::asio::steady_timer timer (Net.IO);
         int count = 0;
 
+        uint32 refresh_count = (refresh_interval + 29) / 30;
+
         // we will call the API every few minutes.
         function<void (boost::system::error_code)> periodically =
-            [self = this->shared_from_this (), &periodically, &timer, &count]
+            [self = this->shared_from_this (), &periodically, &timer, &count, refresh_count]
             (boost::system::error_code err) {
             if (err) throw exception {} << "unknown error: " << err;
 
-            if (count % 3 == 0) {
+            if (count % refresh_count == 0) {
 
                 std::cout << "About to call jobs API " << std::endl;
                 try {
@@ -288,7 +290,7 @@ namespace BoostPOW {
                     return;
                 }
 
-                std::cout << "about to wait another half hour" << std::endl;
+                std::cout << "about to wait another " << (refresh_count * 30) << " seconds." << std::endl;
             } else {
                 uint32 reassign = self->Random.uint32 (self->Redeemers.size () - 1) + 1;
 
@@ -351,7 +353,7 @@ namespace BoostPOW {
                         ptr<handlers> {new handlers {*self}});
                 });*/
 
-            net::websocket::open (Net.IO,
+            if (websockets) net::websocket::open (Net.IO,
                 net::URL {net::protocol::WS, "5201", "pow.co", "/"},
                 nullptr,
                 [] (boost::system::error_code err) {

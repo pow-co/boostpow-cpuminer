@@ -61,9 +61,7 @@ namespace BoostPOW {
 
     }
 
-    mining_options read_mining_options (const argh::parser &command_line, int secret_position, int address_position) {
-
-        mining_options options;
+    void read_redeem_options (redeeming_options &options, const argh::parser &command_line, int secret_position, int address_position) {
 
         string secret_string;
         if (auto positional = command_line (secret_position); positional) positional >> secret_string;
@@ -116,7 +114,6 @@ namespace BoostPOW {
 
         if (auto option = command_line ("api_endpoint"); option) options.APIHost = option.str ();
 
-        return options;
     }
 
     Boost::output_script read_output_script (const string &script_string) {
@@ -143,7 +140,7 @@ namespace BoostPOW {
     }
 
     int run_redeem (const argh::parser &command_line,
-        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const mining_options &)) {
+        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const redeeming_options &)) {
 
         Bitcoin::outpoint outpoint {};
         Boost::output_script boost_script {};
@@ -172,7 +169,11 @@ namespace BoostPOW {
                 if (auto positional = command_line (5); positional) positional >> outpoint.Index;
                 else if (auto option = command_line ("index"); option) option >> outpoint.Index;
 
-                return redeem (outpoint, boost_script, sats, read_mining_options (command_line, 6, 7));
+                redeeming_options r {};
+
+                read_redeem_options (r, command_line, 6, 7);
+
+                return redeem (outpoint, boost_script, sats, r);
             }
 
         } else if (auto option = command_line ("txid"); option) option >> first_arg;
@@ -185,7 +186,9 @@ namespace BoostPOW {
         if (auto positional = command_line (3); positional) positional >> outpoint.Index;
         else if (auto option = command_line ("index"); option) option >> outpoint.Index;
 
-        auto options = read_mining_options (command_line, 4, 7);
+        redeeming_options options {};
+
+        read_redeem_options (options, command_line, 4, 7);
 
         {
             string script_string;
@@ -206,22 +209,26 @@ namespace BoostPOW {
     }
 
     int run_mine (const argh::parser &command_line,
-        int (*mine) (double min_profitability, double max_difficulty, const mining_options &)) {
+        int (*mine) (const mining_options &)) {
 
-        double min_profitability = 0, max_difficulty = 0;
+        mining_options opts {};
 
-        if (auto option = command_line ("min_profitability"); option) option >> min_profitability;
-        if (auto option = command_line ("max_difficulty"); option) option >> max_difficulty;
+        if (auto option = command_line ("min_profitability"); option) option >> opts.MinProfitability;
+        if (auto option = command_line ("max_difficulty"); option) option >> opts.MaxDifficulty;
+        if (auto option = command_line ("refresh_interval"); option) option >> opts.RefreshInterval;
+        opts.Websockets = command_line["websockets"];
 
-        return mine (min_profitability, max_difficulty, read_mining_options (command_line, 2, 3));
+        read_redeem_options (opts, command_line, 2, 3);
+
+        return mine (opts);
     }
 
     int run (const argh::parser &command_line,
         int (*help) (),
         int (*version) (),
         int (*spend) (const script_options &),
-        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64, const mining_options &),
-        int (*mine) (double min_profitability, double max_difficulty, const mining_options &)) {
+        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64, const redeeming_options &),
+        int (*mine) (const mining_options &)) {
 
         try {
             if (command_line["version"]) return version ();

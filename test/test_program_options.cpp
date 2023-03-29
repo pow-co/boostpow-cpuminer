@@ -16,11 +16,11 @@ namespace BoostPOW {
         return 0;
     }
 
-    int redeem (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const mining_options &) {
+    int redeem (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const redeeming_options &) {
         return 0;
     }
 
-    int mine (double min_profitability, double max_difficulty, const mining_options &) {
+    int mine (const mining_options &) {
         return 0;
     }
 

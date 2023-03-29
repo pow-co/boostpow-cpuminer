@@ -140,7 +140,11 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
     }
 };
 
-int redeem (const Bitcoin::outpoint &outpoint, const Boost::output_script &script, int64 value, const BoostPOW::mining_options &options) {
+int redeem (
+    const Bitcoin::outpoint &outpoint,
+    const Boost::output_script &script,
+    int64 value,
+    const BoostPOW::redeeming_options &options) {
 
     BoostPOW::network Net = (options.APIHost) ?
         BoostPOW::network {*options.APIHost} :
@@ -224,7 +228,7 @@ struct manager : BoostPOW::manager {
         address_source &addresses,
         uint64 random_seed, 
         double maximum_difficulty, 
-        double minimum_profitability, int threads): 
+        double minimum_profitability, int threads):
         BoostPOW::manager {net, f, keys, addresses, random_seed, maximum_difficulty, minimum_profitability} {
         
         std::cout << "starting " << threads << " threads." << std::endl;
@@ -233,7 +237,7 @@ struct manager : BoostPOW::manager {
     }
 };
 
-int mine (double min_profitability, double max_difficulty, const BoostPOW::mining_options &options) {
+int mine (const BoostPOW::mining_options &options) {
     
     std::cout << "about to start running" << std::endl;
 
@@ -247,7 +251,7 @@ int mine (double min_profitability, double max_difficulty, const BoostPOW::minin
     
     std::make_shared<manager> (Net, *Fees, *options.SigningKeys, *options.ReceivingAddresses,
         std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337,
-        max_difficulty, min_profitability, options.Threads)->run ();
+        options.MaxDifficulty, options.MinProfitability, options.Threads)->run (options.Websockets, options.RefreshInterval);
     
     delete Fees;
     return 0;
