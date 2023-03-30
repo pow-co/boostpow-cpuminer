@@ -118,11 +118,11 @@ namespace BoostPOW {
 
     Boost::output_script read_output_script (const string &script_string) {
 
-        ptr<bytes> script_from_hex = encoding::hex::read (script_string);
+        maybe<bytes> script_from_hex = encoding::hex::read (script_string);
         typed_data script_from_bip_276 = typed_data::read (script_string);
 
         if (script_from_bip_276.valid ()) return Boost::output_script::read (script_from_bip_276.Data);
-        else if (script_from_hex != nullptr) return Boost::output_script::read (*script_from_hex);
+        else if (! bool (script_from_hex)) return Boost::output_script::read (*script_from_hex);
 
         return Boost::output_script {};
 

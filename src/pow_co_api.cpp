@@ -13,8 +13,8 @@ Boost::prevout read_job (const JSON &job,
     digest256 txid {string {"0x"} + string (job.at ("txid"))};
     if (!txid.valid ()) throw net::HTTP::exception {request, response, "cannot read txid"};
     
-    ptr<bytes> script_bytes = encoding::hex::read (string (job.at ("script")));
-    if (script_bytes == nullptr) 
+    maybe<bytes> script_bytes = encoding::hex::read (string (job.at ("script")));
+    if (!bool (script_bytes))
         throw net::HTTP::exception {request, response, "script should be in hex format"};
     
     Boost::output_script script {*script_bytes};
@@ -167,7 +167,7 @@ std::optional<Boost::prevout> pow_co::websockets_protocol_message::job_created (
         j.contains ("value") && j["value"].is_number_unsigned ())) return {};
 
     auto hex_decoded = encoding::hex::read (string (j["script"]));
-    if (hex_decoded == nullptr) return {};
+    if (! bool (hex_decoded)) return {};
 
     auto output_script = Boost::output_script::read (*hex_decoded);
     if (!output_script.valid ()) return {};

@@ -10,7 +10,7 @@ This is the easiest way to use BoostMiner.
 
 1. Download the latest master branch of this software. 
 2. `docker build -t boostpow .` (This should take a while.)
-3. `docker run boostpow ./bin/BoostMiner help` This will show the help message for the mining software. 
+3. `docker run boostpow ./BoostMiner help` This will show the help message for the mining software.
    See heading *Usage* below. 
 
 ## Installation
