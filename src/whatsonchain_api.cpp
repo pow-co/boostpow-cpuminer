@@ -159,9 +159,9 @@ bytes whatsonchain::transactions::get_raw (const Bitcoin::txid &txid) {
     if (response.Status != net::HTTP::status::ok)
         throw net::HTTP::exception {request, response, "response status is not ok"};
     
-    ptr<bytes> tx = encoding::hex::read (response.Body);
+    maybe<bytes> tx = encoding::hex::read (response.Body);
     
-    if (tx == nullptr) return {};
+    if (!bool (tx)) return {};
     return *tx;
 }
 

@@ -134,21 +134,21 @@ int command_boost(int arg_count, char** arg_values) {
     
     if (arg_count > 4) {
     
-        ptr<bytes> topic_read = encoding::hex::read (string {arg_values[4]});
-        if (topic_read == nullptr || topic_read->size () > 20) throw data::exception{} << "could not read topic: " << arg_values[4];
+        maybe<bytes> topic_read = encoding::hex::read (string {arg_values[4]});
+        if (!bool (topic_read) || topic_read->size () > 20) throw data::exception{} << "could not read topic: " << arg_values[4];
         topic = *topic_read;
     }
     
     if (arg_count > 5) {
-        ptr<bytes> add_data = encoding::hex::read (string {arg_values[5]});
-        if (add_data == nullptr) throw data::exception {} << "could not read additional_data: " << arg_values[5];
+        maybe<bytes> add_data = encoding::hex::read (string {arg_values[5]});
+        if (! bool (add_data)) throw data::exception {} << "could not read additional_data: " << arg_values[5];
         additional_data = *add_data;
     }
     
     Boost::type type = Boost::bounty;
     
     if (arg_count > 6) {
-        string boost_type{arg_values[6]};
+        string boost_type {arg_values[6]};
         if (boost_type == "contract") type = Boost::contract;
         else if (boost_type != "bounty") throw data::exception {} << "could not boost type: " << arg_values[6];
         

@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update
 
 RUN apt-get -y install python3-pip build-essential manpages-dev software-properties-common git cmake
-
+RUN cmake --version
 RUN apt-get -y install autoconf
 RUN apt-get -y install libtool
 
@@ -31,13 +31,13 @@ RUN conan create . --user=proofofwork --channel=stable -b missing
 
 #data
 WORKDIR /tmp
-RUN git clone --depth 1 --branch master https://github.com/DanielKrawisz/data.git
+RUN git clone --depth 1 --branch production https://github.com/DanielKrawisz/data.git
 WORKDIR /tmp/data
 RUN CONAN_CPU_COUNT=1 conan create . --user=proofofwork --channel=stable -b missing
 
 #gigamonkey
 WORKDIR /tmp
-RUN git clone --depth 1 --branch master https://github.com/Gigamonkey-BSV/Gigamonkey.git
+RUN git clone --depth 1 --branch production https://github.com/Gigamonkey-BSV/Gigamonkey.git
 WORKDIR /tmp/Gigamonkey
 RUN CONAN_CPU_COUNT=1 conan create . --user=proofofwork --channel=stable -b missing
 
@@ -46,7 +46,7 @@ WORKDIR /home/boostminer
 RUN chmod -R 777 .
 
 RUN conan install . --build=missing
-RUN cmake --preset conan-release .
+RUN cmake . -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=/home/boostminer/conan_toolchain.cmake -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_BUILD_TYPE=Release
 RUN cmake --build .
 #RUN CONAN_CPU_COUNT=1 conan build .
 
