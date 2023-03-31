@@ -289,13 +289,16 @@ int help () {
         "\n\tkey        -- WIF or HD private key that will be used to redeem outputs."
         "\n\taddress    -- (optional) your address where you will put the redeemed sats."
         "\n\t              If not provided, addresses will be generated from the key. " 
-        "\nadditional available options are "
+        "\nadditional available options for redeem and mine are "
         "\n\tapi_host          -- Host to call for Boost API. Default is pow.co"
         "\n\tthreads           -- Number of threads to mine with. Default is 1."
         "\n\tmin_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
         "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored."
         "\n\tfee_rate          -- Sats per byte of the final transaction."
-        "\n\t                     If not provided we get a fee quote from Gorilla Pool." << std::endl;
+        "\n\t                     If not provided we get a fee quote from Gorilla Pool."
+        "\nadditional available options for mine are " <<
+        "\n\twebsocket         -- use the websockets protocol if set." <<
+        "\n\trefresh_interval  -- how often to call the API for new jobs." << std::endl;
 
     return 0;
 }
