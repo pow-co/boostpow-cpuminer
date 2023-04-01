@@ -6,12 +6,22 @@ For distribution it is meant that this repository may be built for mac, linux, a
 
 ## Run from docker
 
-This is the easiest way to use BoostMiner. Docker needs to be installed. For linux users, be sure to follow the [post install](https://docs.docker.com/engine/install/linux-postinstall/) instructions. Otherwise, the following instructions need to be run with `sudo`, which is not the recommended way to use docker.
+This is the easiest way to use BoostMiner. The first thing you need is a docker image. You can create one yourself from this repo or you can try to download the latest from docker hub. To generate your own:
 
-1. Download the latest master branch of this software. 
-2. `docker build -t boostpow .` (This should take a while.)
-3. `docker run boostpow ./BoostMiner help` This will show the help message for the mining software.
+* Download the latest master branch of this software.
+* `docker build -t boostpow .` (This should take a while.)
+
+To download from docker hub:
+
+* `docker pull danielkrawisz/boostpow-cpuminer:latest`
+
+Once you have the docker image, run it with
+
+* `docker run boostpow ./BoostMiner help` This will show the help message for the mining software.
    See heading *Usage* below. 
+
+For linux users, if you are having trouble, try running these commands with `sudo`. If that works, the issue can be resolved by following the
+docker [post install](https://docs.docker.com/engine/install/linux-postinstall/) instructions.
 
 ## Installation
 
