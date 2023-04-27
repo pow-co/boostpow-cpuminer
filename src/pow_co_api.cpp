@@ -26,10 +26,15 @@ Boost::prevout read_job (const JSON &job,
         Boost::output {Bitcoin::satoshi {value}, script}};
 }
 
-list<Boost::prevout> pow_co::jobs (uint32 limit) {
-    std::stringstream ss;
-    ss << limit;
-    auto request = this->REST.GET ("/api/v1/boost/jobs", {{"limit", ss.str ()}});
+list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
+    
+    list<entry<string, string>> query_params;
+    
+    query_params <<= entry<string, string> {"limit", std::to_string (limit)};
+    
+    if (max_difficulty > 0) query_params <<= entry<string, string> {"maxDifficulty", std::to_string (max_difficulty)};
+    
+    auto request = this->REST.GET ("/api/v1/boost/jobs", query_params);
     auto response = this->operator () (request);
     
     if (response.Status != net::HTTP::status::ok) {

@@ -63,9 +63,10 @@ map<Bitcoin::txid, bytes> Transaction;
 // script histories by script hash
 map<digest256, list<Bitcoin::txid>> History;
 
-BoostPOW::jobs BoostPOW::network::jobs (uint32 limit) {
+BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty) {
+    
     std::lock_guard<std::mutex> lock (Mutex);
-    const list<Boost::prevout> jobs_api_call {PowCo.jobs (limit)};
+    const list<Boost::prevout> jobs_api_call {PowCo.jobs (limit, max_difficulty)};
     
     BoostPOW::jobs Jobs {};
     uint32 count_closed_jobs = 0;

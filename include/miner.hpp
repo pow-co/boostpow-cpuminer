@@ -151,7 +151,8 @@ namespace BoostPOW {
             address_source &addresses,
             uint64 random_seed,
             double maximum_difficulty,
-            double minimum_profitability);
+            double minimum_profitability, 
+            uint64 min_value);
         
         void run (bool websockets, uint32 refresh_interval);
         
@@ -179,6 +180,7 @@ namespace BoostPOW {
         
         double MaxDifficulty;
         double MinProfitability;
+        uint64 MinValue;
         
         jobs Jobs;
         
