@@ -228,8 +228,9 @@ struct manager : BoostPOW::manager {
         address_source &addresses,
         uint64 random_seed, 
         double maximum_difficulty, 
-        double minimum_profitability, int threads):
-        BoostPOW::manager {net, f, keys, addresses, random_seed, maximum_difficulty, minimum_profitability} {
+        double minimum_profitability, 
+        uint64 min_value, int threads):
+        BoostPOW::manager {net, f, keys, addresses, random_seed, maximum_difficulty, minimum_profitability, min_value} {
         
         std::cout << "starting " << threads << " threads." << std::endl;
         for (int i = 1; i <= threads; i++) 
@@ -251,7 +252,8 @@ int mine (const BoostPOW::mining_options &options) {
     
     std::make_shared<manager> (Net, *Fees, *options.SigningKeys, *options.ReceivingAddresses,
         std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337,
-        options.MaxDifficulty, options.MinProfitability, options.Threads)->run (options.Websockets, options.RefreshInterval);
+        options.MaxDifficulty, options.MinProfitability, options.MinValue, 
+        options.Threads)->run (options.Websockets, options.RefreshInterval);
     
     delete Fees;
     return 0;
@@ -297,6 +299,7 @@ int help () {
         "\n\tfee_rate          -- Sats per byte of the final transaction."
         "\n\t                     If not provided we get a fee quote from Gorilla Pool."
         "\nadditional available options for mine are " <<
+        "\n\tmin_value         -- minimum value of a Boost output to bother mining." <<
         "\n\twebsocket         -- use the websockets protocol if set." <<
         "\n\trefresh_interval  -- how often to call the API for new jobs." << std::endl;
 

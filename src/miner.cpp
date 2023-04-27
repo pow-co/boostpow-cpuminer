@@ -216,10 +216,11 @@ namespace BoostPOW {
         address_source &addresses,
         uint64 random_seed, 
         double maximum_difficulty, 
-        double minimum_profitability) : Mutex {},
+        double minimum_profitability, 
+        uint64 min_value) : Mutex {},
         Net {net}, Fees {f}, Keys {keys}, Addresses {addresses},
-        MaxDifficulty {maximum_difficulty}, MinProfitability {minimum_profitability},
-        Random {random_seed}, Jobs {}, Redeemers {}, Mining {false} {}
+        MaxDifficulty {maximum_difficulty}, MinProfitability {minimum_profitability}, 
+        MinValue {min_value}, Random {random_seed}, Jobs {}, Redeemers {}, Mining {false} {}
         
     int manager::add_new_miner (ptr<redeemer> r) {
         Redeemers.push_back (r);
@@ -276,7 +277,7 @@ namespace BoostPOW {
 
                 std::cout << "About to call jobs API " << std::endl;
                 try {
-                    self->update_jobs (self->Net.jobs (300));
+                    self->update_jobs (self->Net.jobs (300, self->MaxDifficulty));
                 } catch (const net::HTTP::exception &exception) {
                     std::cout << "API problem: " << exception.what () <<
                         "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
@@ -338,8 +339,6 @@ namespace BoostPOW {
 
             // get started.
             periodically (boost::system::error_code {});
-
-            std::cout << "set up websockets..." << std::endl;
 
             // set up websockets.
 /*
@@ -452,8 +451,8 @@ namespace BoostPOW {
 
         // remove jobs whose value is too low.
         uint32 tiny_jobs = difficult_jobs = Jobs.remove (
-            [] (const BoostPOW::working &x) -> bool {
-            return x.value () < 100;
+            [MinValue = this->MinValue] (const BoostPOW::working &x) -> bool {
+            return x.value () < MinValue;
         });
 
         std::cout << tiny_jobs << " jobs removed due to low value." << std::endl;

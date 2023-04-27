@@ -214,6 +214,7 @@ namespace BoostPOW {
         mining_options opts {};
 
         if (auto option = command_line ("min_profitability"); option) option >> opts.MinProfitability;
+        if (auto option = command_line ("min_value"); option) option >> opts.MinValue;
         if (auto option = command_line ("max_difficulty"); option) option >> opts.MaxDifficulty;
         if (auto option = command_line ("refresh_interval"); option) option >> opts.RefreshInterval;
         opts.Websockets = command_line["websockets"];

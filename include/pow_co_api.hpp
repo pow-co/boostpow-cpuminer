@@ -23,7 +23,7 @@ struct pow_co : net::HTTP::client_blocking {
     pow_co (net::asio::io_context &io, ptr<net::HTTP::SSL> ssl, string host = "pow.co") :
         net::HTTP::client_blocking {ssl, net::HTTP::REST {"https", host}, tools::rate_limiter {3, 1}}, IO {io}, SSL {ssl} {}
     
-    list<Boost::prevout> jobs (uint32 limit = 10);
+    list<Boost::prevout> jobs (uint32 limit = 10, double max_difficulty = -1);
     
     Boost::prevout job (const Bitcoin::txid &);
     Boost::prevout job (const Bitcoin::outpoint &);

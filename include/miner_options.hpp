@@ -72,6 +72,7 @@ namespace BoostPOW {
     struct mining_options : redeeming_options {
         double MinProfitability {0};
         double MaxDifficulty {-1};
+        int64 MinValue {300};
         bool Websockets {false};
         uint32 RefreshInterval {90};
     };
