@@ -63,17 +63,35 @@ map<Bitcoin::txid, bytes> Transaction;
 // script histories by script hash
 map<digest256, list<Bitcoin::txid>> History;
 
-BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty) {
+BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int64 min_value) {
     
     std::lock_guard<std::mutex> lock (Mutex);
     const list<Boost::prevout> jobs_api_call {PowCo.jobs (limit, max_difficulty)};
     
     BoostPOW::jobs Jobs {};
+    
     uint32 count_closed_jobs = 0;
+    uint32 count_jobs_with_multiple_outputs = 0;
+    uint32 count_open_jobs = 0;
+    uint32 count_low_value_jobs = 0;
+    
     json::array_t redemptions;
+    
+    std::map<digest256, list<Boost::prevout>> prevouts;
+    
+    std::cout << "Jobs returned from API: " << jobs_api_call.size () << std::endl;
+    
+    for (const Boost::prevout &job : jobs_api_call) {
+        digest256 script_hash = job.id ();
+        if (auto j = prevouts.find (script_hash); j != prevouts.end ()) j->second <<= job; 
+        else prevouts[script_hash] = list<Boost::prevout> {job};
+    }
+    
+    std::cout << "found " << prevouts.size () << " separate scripts." << std::endl;
     
     // check on jobs that have been closed and are incorrectly being returned.
     auto count_closed_job = [this, &count_closed_jobs, &redemptions] (const Boost::prevout &job) -> void {
+        std::cout << "  reporting closed job " << job << std::endl;
         count_closed_jobs++;
         
         inpoint in;
@@ -140,57 +158,49 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty) {
         }
     };
     
-    for (const Boost::prevout &job : jobs_api_call) {
-    
-        digest256 script_hash = job.id ();
+    for (const auto &pair : prevouts) {
+        auto script_hash = pair.first;
         
-        if (auto j = Jobs.Jobs.find (script_hash); j != Jobs.Jobs.end ()) {
+        std::cout << "  checking script " << pair.first << std::endl;
+        
+        list<UTXO> script_utxos = WhatsOnChain.script ().get_unspent (script_hash);
+        
+        list<Boost::prevout> unspent;
+        
+        for (const Boost::prevout &p : pair.second) {
+            std::cout << "    " << p.outpoint () << std::endl;
+            bool closed = true;
             
-            bool closed_job = true;
-            for (const auto &u : j->second.Prevouts.values ()) if (static_cast<Bitcoin::outpoint> (u) == job.outpoint ()) {
-                closed_job = false;
-                break;
+            for (const UTXO &u : script_utxos) if (u.Outpoint == p.outpoint ()) {
+                closed = false;
+                continue;
             }
             
-            if (closed_job) count_closed_job (job);
-            
-            continue;
+            if (closed) count_closed_job (p);
+            else unspent <<= p;
         }
         
-        Jobs.add_script (job.script ());
-        
-        auto script_utxos = WhatsOnChain.script ().get_unspent (script_hash);
-        
-        // is the current job in the list from whatsonchain? 
-        bool match_found = false;
-        
-        for (auto const &u : script_utxos) {
-            Boost::prevout p {u.Outpoint, Boost::output {u.Value, job.script (), script_hash}};
-            Jobs.add_prevout (p);
+        if (!data::empty (unspent)) {
+            Jobs.add_script (unspent.first ().script ());
             
-            if (u.Outpoint == job.outpoint ()) match_found = true;
+            for (const Boost::prevout &p : unspent) {
+                count_open_jobs++;
+                
+                if (p.value () < min_value) count_low_value_jobs++;
+                else Jobs.add_prevout (p);
+            } 
+            
+            if (data::size (unspent) > 1) count_jobs_with_multiple_outputs++;
         }
-        
-        if (!match_found) count_closed_job (job);
         
     }
-    
-    uint32 count_jobs_with_multiple_outputs = 0;
-    uint32 count_open_jobs = 0;
-    
-    for (auto it = Jobs.Jobs.cbegin (); it != Jobs.Jobs.cend ();)
-        if (it->second.Prevouts.size () == 0) it = Jobs.Jobs.erase (it);
-        else {
-            count_open_jobs++;
-            if (it->second.Prevouts.size () > 1) count_jobs_with_multiple_outputs++;
-            ++it;
-        }
     
     logger::log ("api.jobs.report", json {
         {"jobs_returned_by_API", jobs_api_call.size ()},
         {"jobs_not_already_redeemed", count_open_jobs}, 
         {"jobs_already_redeemed", count_closed_jobs}, 
         {"jobs_with_multiple_outputs", count_jobs_with_multiple_outputs}, 
+        {"jobs_with_low_value", count_low_value_jobs}, 
         {"redemptions", redemptions}, 
         {"valid_jobs", JSON (Jobs)}
     });
@@ -208,7 +218,7 @@ satoshi_per_byte BoostPOW::network::mining_fee () {
     return z.Fees["standard"].MiningFee;
 }
 
-Boost::candidate BoostPOW::network::job(const Bitcoin::outpoint &o) {
+Boost::candidate BoostPOW::network::job (const Bitcoin::outpoint &o) {
     // check for job at pow co. 
     Boost::candidate x {{PowCo.job (o)}};
     // check for job with whatsonchain.

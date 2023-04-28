@@ -27,7 +27,7 @@ namespace BoostPOW {
             SSL->set_verify_mode (net::asio::ssl::verify_peer);
         }
         
-        BoostPOW::jobs jobs (uint32 limit = 10, double max_difficulty = -1);
+        BoostPOW::jobs jobs (uint32 limit = 10, double max_difficulty = -1, int64 min_value = 1);
         
         bytes get_transaction (const Bitcoin::txid &);
         

@@ -277,7 +277,7 @@ namespace BoostPOW {
 
                 std::cout << "About to call jobs API " << std::endl;
                 try {
-                    self->update_jobs (self->Net.jobs (300, self->MaxDifficulty));
+                    self->update_jobs (self->Net.jobs (300, self->MaxDifficulty, self->MinValue));
                 } catch (const net::HTTP::exception &exception) {
                     std::cout << "API problem: " << exception.what () <<
                         "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
@@ -448,14 +448,6 @@ namespace BoostPOW {
         });
 
         std::cout << difficult_jobs << " jobs removed due to high difficulty." << std::endl;
-
-        // remove jobs whose value is too low.
-        uint32 tiny_jobs = difficult_jobs = Jobs.remove (
-            [MinValue = this->MinValue] (const BoostPOW::working &x) -> bool {
-            return x.value () < MinValue;
-        });
-
-        std::cout << tiny_jobs << " jobs removed due to low value." << std::endl;
 
         uint32 unprofitable_jobs = Jobs.remove (
             [MinProfitability = this->MinProfitability]
