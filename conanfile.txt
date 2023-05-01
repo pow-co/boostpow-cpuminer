@@ -2,13 +2,13 @@
 boost/1.80.0
 openssl/1.1.1t
 cryptopp/8.5.0
-nlohmann_json/3.10.0
+nlohmann_json/3.11.2
 gmp/6.2.1
 secp256k1/0.3@proofofwork/stable
-data/v0.0.24@proofofwork/stable
+data/v0.0.25@proofofwork/unstable
 gtest/1.12.1
 argh/1.3.2
-gigamonkey/v0.0.13@proofofwork/stable
+gigamonkey/v0.0.14@proofofwork/unstable
 
 [generators]
 CMakeDeps

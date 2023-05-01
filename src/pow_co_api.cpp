@@ -28,11 +28,11 @@ Boost::prevout read_job (const JSON &job,
 
 list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
     
-    list<entry<string, string>> query_params;
+    list<entry<data::UTF8, data::UTF8>> query_params;
     
-    query_params <<= entry<string, string> {"limit", std::to_string (limit)};
+    query_params <<= entry<data::UTF8, data::UTF8> {"limit", std::to_string (limit)};
     
-    if (max_difficulty > 0) query_params <<= entry<string, string> {"maxDifficulty", std::to_string (max_difficulty)};
+    if (max_difficulty > 0) query_params <<= entry<data::UTF8, data::UTF8> {"maxDifficulty", std::to_string (max_difficulty)};
     
     auto request = this->REST.GET ("/api/v1/boost/jobs", query_params);
     auto response = this->operator () (request);
@@ -91,6 +91,7 @@ void pow_co::submit_proof (const bytes &tx) {
     auto request = this->REST.POST ("/api/v1/boost/proofs",
         {{net::HTTP::header::content_type, "application/JSON"}},
         JSON {{"transaction", encoding::hex::write (tx)}}.dump ());
+    std::cout << "About to submit proof: " << request.URL << "\n\t" << request.Body << std::endl;
     this->operator () (request);
 }
 
@@ -204,7 +205,7 @@ void pow_co::connect (
     net::open_JSON_session ([] (const JSON::exception &err) -> void {
             throw err;
         }, [
-            url = net::URL {net::protocol::WS, "5201", this->REST.Host, "/"},
+            url = net::URL (net::URL::make {}.protocol ("ws").port (5201).domain_name (this->REST.Host).path ("/")),
             &io = this->IO, ssl = this->SSL, error_handler
         ] (net::close_handler closed, net::interaction<string_view, const string &> interact) -> void {
             net::websocket::open (io, url, ssl.get(), error_handler, closed, interact);

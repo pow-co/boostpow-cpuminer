@@ -266,10 +266,12 @@ namespace BoostPOW {
         int count = 0;
 
         uint32 refresh_count = (refresh_interval + 29) / 30;
+        
+        bool websockets_running = false;
 
         // we will call the API every few minutes.
         function<void (boost::system::error_code)> periodically =
-            [self = this->shared_from_this (), &periodically, &timer, &count, refresh_count]
+            [self = this->shared_from_this (), &periodically, &timer, &count, &websockets, &websockets_running, refresh_count]
             (boost::system::error_code err) {
             if (err) throw exception {} << "unknown error: " << err;
 
@@ -280,8 +282,7 @@ namespace BoostPOW {
                     self->update_jobs (self->Net.jobs (300, self->MaxDifficulty, self->MinValue));
                 } catch (const net::HTTP::exception &exception) {
                     std::cout << "API problem: " << exception.what () <<
-                        "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
-                        "://" << exception.Request.URL.host () << exception.Request.URL.path () <<
+                        "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL <<
                         "\n\theaders: " << exception.Request.Headers <<
                         "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
                 } catch (const std::exception &exception) {
@@ -289,6 +290,45 @@ namespace BoostPOW {
                 } catch (...) {
                     std::cout << "something went wrong: " << std::endl;
                     return;
+                }
+                
+                if (websockets && !websockets_running) {
+                    try {
+                        net::websocket::open (self->Net.IO,
+                            net::URL (net::URL::make {}.protocol ("ws").port (5201).domain_name ("pow.co").path ("/")), 
+                            nullptr,
+                            [] (boost::system::error_code err) {
+                                throw exception {} << "websockets error " << err;
+                            }, [&websockets_running] () {
+                                websockets_running = false;
+                                std::cout << "websockets closed..." << std::endl;
+                            },
+                            [&self, &websockets_running] (ptr<net::session<const string &>> o) {
+                                websockets_running = true;
+                                return [self] (string_view x) {
+                                    std::cout << "read websockets message " << x << std::endl;
+                                    auto j = JSON::parse (x);
+                                    if (!pow_co::websockets_protocol_message::valid (j))
+                                        std::cout << "invalid websockets message received: " << j << std::endl;
+                                    else if (j["type"] == "boostpow.job.created") {
+                                        if (auto prevout = pow_co::websockets_protocol_message::job_created (j["content"]);
+                                            bool (prevout)) self->new_job (*prevout);
+                                        else std::cout << "could not read websockets message " << j["content"] << std::endl;
+                                    } else if (j["type"] == "boostpow.proof.created") {
+                                        if (auto outpoint = pow_co::websockets_protocol_message::proof_created (j["content"]);
+                                            bool (outpoint)) self->solved_job (*outpoint);
+                                        else std::cout << "could not read websockets message " << j["content"] << std::endl;
+                                    } else std::cout << "unknown message received: " << j << std::endl;
+                                };
+                            });
+                        
+                    } catch (boost::system::system_error const& e) {
+                        std::cout << "caught system error: " << e.what () << std::endl;
+                    } catch (boost::exception const& e) {
+                        std::cout << "caught boost exception: " << std::endl;
+                    } catch (const std::exception& e) {
+                        std::cout << "caught exception: " << e.what () << std::endl;
+                    }
                 }
 
                 std::cout << "about to wait another " << (refresh_count * 30) << " seconds." << std::endl;
@@ -352,31 +392,6 @@ namespace BoostPOW {
                         ptr<handlers> {new handlers {*self}});
                 });*/
 
-            if (websockets) net::websocket::open (Net.IO,
-                net::URL {net::protocol::WS, "5201", "pow.co", "/"},
-                nullptr,
-                [] (boost::system::error_code err) {
-                    throw exception {} << "websockets error " << err;
-                }, [] () {
-                    std::cout << "websockets closed..." << std::endl;
-                },
-                [self = this->shared_from_this ()] (ptr<net::session<const string &>> o) {
-                    return [self] (string_view x) {
-                        std::cout << "read websockets message " << x << std::endl;
-                        auto j = JSON::parse (x);
-                        if (!pow_co::websockets_protocol_message::valid (j))
-                            std::cout << "invalid websockets message received: " << j << std::endl;
-                        else if (j["type"] == "boostpow.job.created") {
-                            if (auto prevout = pow_co::websockets_protocol_message::job_created (j["content"]);
-                                bool (prevout)) self->new_job (*prevout);
-                            else std::cout << "could not read websockets message " << j["content"] << std::endl;
-                        } else if (j["type"] == "boostpow.proof.created") {
-                            if (auto outpoint = pow_co::websockets_protocol_message::proof_created (j["content"]);
-                                bool (outpoint)) self->solved_job (*outpoint);
-                            else std::cout << "could not read websockets message " << j["content"] << std::endl;
-                        } else std::cout << "unknown message received: " << j << std::endl;
-                    };
-                });
 
             Net.IO.run ();
         } catch (const std::exception &e) {

@@ -43,6 +43,7 @@ UTXO::operator JSON() const {
 }
 
 list<UTXO> whatsonchain::addresses::get_unspent (const Bitcoin::address &addr) {
+    
     std::stringstream ss;
     ss << "/v1/bsv/main/address/" << addr << "/unspent";
     auto request = API.REST.GET (ss.str ());
@@ -74,12 +75,13 @@ list<UTXO> whatsonchain::addresses::get_unspent (const Bitcoin::address &addr) {
 }
 
 list<UTXO> whatsonchain::scripts::get_unspent (const digest256 &script_hash) {
+    
     std::stringstream ss;
     ss << script_hash;
     
-    string call = string {"/v1/bsv/main/script/"} + ss.str ().substr (9, 64) + "/unspent";
+    string path = string {"/v1/bsv/main/script/"} + ss.str ().substr (9, 64) + "/unspent";
     
-    auto request = API.REST.GET (call);
+    auto request = API.REST.GET (path);
     auto response = API (request);
     
     if (response.Status != net::HTTP::status::ok)
@@ -99,7 +101,7 @@ list<UTXO> whatsonchain::scripts::get_unspent (const digest256 &script_hash) {
             UTXO u (item);
             if (!u.valid ()) throw response;
             
-            UTXOs = UTXOs << u;
+            UTXOs <<= u;
             
         }
     } catch (const JSON::exception &exception) {

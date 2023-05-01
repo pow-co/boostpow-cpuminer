@@ -4,12 +4,13 @@ This c++ program depends on the Gigamonkey repository and is designed to pull in
 
 For distribution it is meant that this repository may be built for mac, linux, and windows, as well as packaged for Docker. Ideally also there will be an apt package repository.
 
-## Run from docker
+## Run with Docker
 
-This is the easiest way to use BoostMiner. The first thing you need is a docker image. You can create one yourself from this repo or you can try to download the latest from docker hub. To generate your own:
+Docker is software that enables the construction of a specific emulated environment in which to run a program. This makes it a lot easier to build software on different machines. 
 
-* Download the latest master branch of this software.
-* `docker build -t boostpow .` (This should take a while.)
+For linux users, if you are having trouble running docker commands, try running them with `sudo`. If that works, the issue can be resolved by following the docker [post install](https://docs.docker.com/engine/install/linux-postinstall/) instructions.
+
+### Download from Docker hub (easiest)
 
 To download from docker hub:
 
@@ -17,11 +18,16 @@ To download from docker hub:
 
 Once you have the docker image, run it with
 
-* `docker run boostpow ./BoostMiner help` This will show the help message for the mining software.
+* `docker run danielkrawisz/boostpow-cpuminer ./BoostMiner help` This will show the help message for the mining software.
    See heading *Usage* below. 
 
-For linux users, if you are having trouble, try running these commands with `sudo`. If that works, the issue can be resolved by following the
-docker [post install](https://docs.docker.com/engine/install/linux-postinstall/) instructions.
+### Build from docker
+
+This is the easiest way to use BoostMiner. The first thing you need is a docker image. You can create one yourself from this repo or you can try to download the latest from docker hub. To generate your own:
+
+* Download the latest master branch of this software.
+* `docker build -t boostpow .` (This should take a while.)
+* `docker run boostpow ./BoostMiner help` This will show the help message for the mining software.
 
 ## Installation
 
