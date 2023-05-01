@@ -259,7 +259,7 @@ int mine (const BoostPOW::mining_options &options) {
     return 0;
 }
 
-const char version_string[] = "BoostMiner 0.2.5";
+const char version_string[] = "BoostMiner 0.2.6";
 
 int version () {
     std::cout << version_string << std::endl;

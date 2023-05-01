@@ -81,6 +81,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
     
     std::cout << "Jobs returned from API: " << jobs_api_call.size () << std::endl;
     
+    // organize all jobs in terms of script hash. 
     for (const Boost::prevout &job : jobs_api_call) {
         digest256 script_hash = job.id ();
         if (auto j = prevouts.find (script_hash); j != prevouts.end ()) j->second <<= job; 
@@ -102,8 +103,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
         } catch (const net::HTTP::exception &exception) {
             // continue if this call fails, as it is not essential. 
             std::cout << "API problem: " << exception.what () <<
-                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL.port () <<
-                "://" << exception.Request.URL.host () << exception.Request.URL.path () <<
+                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL << 
                 "\n\theaders: " << exception.Request.Headers << 
                 "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
         }
@@ -141,6 +141,8 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
                         Transaction = Transaction.insert (in.Reference.Digest, spend_tx);
                     } else spend_tx = *tx;
                     
+                    std::cout << "spend tx found: " << redeem_txid << std::endl;
+                    
                     redemptions.push_back (json {
                         {"outpoint", write (job.outpoint ())},
                         {"inpoint", write (Bitcoin::outpoint {redeem_txid, ii++})},
@@ -161,10 +163,10 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
     for (const auto &pair : prevouts) {
         auto script_hash = pair.first;
         
-        std::cout << "  checking script " << pair.first << std::endl;
+        std::cout << "  checking boost script with hash " << pair.first << std::endl;
         
         list<UTXO> script_utxos = WhatsOnChain.script ().get_unspent (script_hash);
-        
+        std::cout << "  got unspent scripts " << script_utxos << std::endl;
         list<Boost::prevout> unspent;
         
         for (const Boost::prevout &p : pair.second) {
@@ -269,8 +271,8 @@ double BoostPOW::network::price (tm time) {
     std::cout << "   about to get BSV price in USD at date " << date << std::endl;
 
     auto request = CoinGecko.REST.GET ("/api/v3/coins/bitcoin-cash-sv/history", {
-        entry<string, string> {"date", date },
-        entry<string, string> {"localization", "false" }
+        entry<data::UTF8, data::UTF8> {"date", date },
+        entry<data::UTF8, data::UTF8> {"localization", "false" }
     });
 
     // the rate limitation for this call is hard to understand.

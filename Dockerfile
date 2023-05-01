@@ -28,18 +28,17 @@ RUN git clone https://github.com/Gigamonkey-BSV/secp256k1-conan-recipe.git
 WORKDIR /tmp/secp256k1-conan-recipe
 RUN conan create . --user=proofofwork --channel=stable -b missing
 
-
 #data
 WORKDIR /tmp
-RUN git clone --depth 1 --branch production https://github.com/DanielKrawisz/data.git
+RUN git clone --depth 1 --branch master https://github.com/DanielKrawisz/data.git
 WORKDIR /tmp/data
-RUN CONAN_CPU_COUNT=1 conan create . --user=proofofwork --channel=stable -b missing
+RUN CONAN_CPU_COUNT=1 conan create . --user=proofofwork --channel=unstable -b missing
 
 #gigamonkey
 WORKDIR /tmp
-RUN git clone --depth 1 --branch production https://github.com/Gigamonkey-BSV/Gigamonkey.git
+RUN git clone --depth 1 --branch master https://github.com/Gigamonkey-BSV/Gigamonkey.git
 WORKDIR /tmp/Gigamonkey
-RUN CONAN_CPU_COUNT=1 conan create . --user=proofofwork --channel=stable -b missing
+RUN CONAN_CPU_COUNT=1 conan create . --user=proofofwork --channel=unstable -b missing
 
 COPY . /home/boostminer
 WORKDIR /home/boostminer

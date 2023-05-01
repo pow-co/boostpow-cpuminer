@@ -24,6 +24,10 @@ struct UTXO {
     
 };
 
+std::ostream inline &operator << (std::ostream &o, const UTXO &u) {
+    return o << "UTXO {" << u.Outpoint << ", " << u.Value << ", " << u.Height << "}" << std::endl;
+}
+
 struct whatsonchain : net::HTTP::client_blocking {
     whatsonchain (ptr<net::HTTP::SSL> ssl) :
         net::HTTP::client_blocking {ssl, net::HTTP::REST {"https", "api.whatsonchain.com"}, tools::rate_limiter {3, 1}} {}
