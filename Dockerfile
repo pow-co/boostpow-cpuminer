@@ -28,6 +28,17 @@ RUN git clone https://github.com/Gigamonkey-BSV/secp256k1-conan-recipe.git
 WORKDIR /tmp/secp256k1-conan-recipe
 RUN conan create . --user=proofofwork --channel=stable -b missing
 
+#pegtl
+WORKDIR /tmp
+RUN git clone https://github.com/taocpp/PEGTL.git
+WORKDIR /tmp/PEGTL
+RUN git checkout 3.2.7
+RUN mkdir build
+WORKDIR /tmp/PEGTL/build
+RUN cmake ..
+RUN make
+RUN make install
+
 #data
 WORKDIR /tmp
 RUN git clone --depth 1 --branch master https://github.com/DanielKrawisz/data.git
