@@ -103,7 +103,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
         } catch (const net::HTTP::exception &exception) {
             // continue if this call fails, as it is not essential. 
             std::cout << "API problem: " << exception.what () <<
-                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL << 
+                "\n\tcall: " << exception.Request.Method << " " << exception.Request.URL <<
                 "\n\theaders: " << exception.Request.Headers << 
                 "\n\tbody: \"" << exception.Request.Body << "\"" << std::endl;
         }
@@ -160,10 +160,12 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
         }
     };
     
+    int i = 0;
     for (const auto &pair : prevouts) {
         auto script_hash = pair.first;
         
-        std::cout << "  checking boost script with hash " << pair.first << std::endl;
+        std::cout << "  checking script " << i << " of " << prevouts.size () << " with hash " << pair.first << std::endl;
+        i++;
         
         list<UTXO> script_utxos = WhatsOnChain.script ().get_unspent (script_hash);
         std::cout << "  got unspent scripts " << script_utxos << std::endl;

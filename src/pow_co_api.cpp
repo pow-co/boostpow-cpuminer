@@ -27,6 +27,8 @@ Boost::prevout read_job (const JSON &job,
 }
 
 list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
+
+    std::cout << "getting " << limit << " jobs with max difficulty " << max_difficulty << std::endl;
     
     list<entry<data::UTF8, data::UTF8>> query_params;
     
@@ -35,6 +37,9 @@ list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
     if (max_difficulty > 0) query_params <<= entry<data::UTF8, data::UTF8> {"maxDifficulty", std::to_string (max_difficulty)};
     
     auto request = this->REST.GET ("/api/v1/boost/jobs", query_params);
+
+    std::cout << "making request to " << request.URL << std::endl;
+
     auto response = this->operator () (request);
     
     if (response.Status != net::HTTP::status::ok) {
@@ -51,6 +56,8 @@ list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
     try {
         
         JSON JSON_jobs = JSON::parse (response.Body).at ("jobs");
+
+        std::cout << "returned " << JSON_jobs.size () << " jobs ..." << std::endl;
         
         for (const JSON &job : JSON_jobs) boost_jobs = boost_jobs << read_job (job, request, response);
     } catch (const JSON::exception &j) {
