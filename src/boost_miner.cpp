@@ -153,8 +153,9 @@ int redeem (
     Boost::candidate Job {};
 
     Boost::output_script boost_script {};
-    
+
     if (value <= 0 || !script.valid ()) {
+
         Job = Net.job (outpoint);
         
         if (value <= 0) value = Job.value ();

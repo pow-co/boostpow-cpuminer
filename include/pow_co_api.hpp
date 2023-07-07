@@ -59,8 +59,22 @@ struct pow_co : net::HTTP::client_blocking {
     void connect (net::asio::error_handler error_handler, net::close_handler,
         function<ptr<websockets_protocol_handlers> (ptr<net::session<const JSON &>>)>);
 
+    static string write (const Bitcoin::txid &);
+    static string write (const Bitcoin::outpoint &);
+
+    static std::ostream &write (std::ostream &, const Bitcoin::txid &);
+    static std::ostream &write (std::ostream &, const Bitcoin::outpoint &);
+
     //void connect (net::asio::error_handler error_handler, net::close_handler, net::interaction<const JSON &>);
     
 };
+
+std::ostream inline &pow_co::write (std::ostream &o, const Bitcoin::txid &txid) {
+    return o << write (txid);
+}
+
+std::ostream inline &pow_co::write (std::ostream &o, const Bitcoin::outpoint &out) {
+    return o << write (out.Digest) << "_o" << out.Index;
+}
 
 #endif

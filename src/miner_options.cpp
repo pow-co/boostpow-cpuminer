@@ -122,7 +122,7 @@ namespace BoostPOW {
         typed_data script_from_bip_276 = typed_data::read (script_string);
 
         if (script_from_bip_276.valid ()) return Boost::output_script::read (script_from_bip_276.Data);
-        else if (! bool (script_from_hex)) return Boost::output_script::read (*script_from_hex);
+        else if (bool (script_from_hex)) return Boost::output_script::read (*script_from_hex);
 
         return Boost::output_script {};
 
@@ -152,7 +152,6 @@ namespace BoostPOW {
             // Test another way to read inputs for backwards compatibilty.
             // In an earlier version of the program, the boost script came first.
             boost_script = read_output_script (first_arg);
-
             if (boost_script.valid ()) {
 
                 // since a boost script was provided, we look to the next argument to be a satoshi value.
