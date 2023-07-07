@@ -2,6 +2,20 @@
 #include <data/net/websocket.hpp>
 #include <data/net/JSON.hpp>
 
+#include <boost/algorithm/hex.hpp>
+
+string pow_co::write (const Bitcoin::txid &txid) {
+    std::stringstream output_stream;
+    output_stream << txid;
+    return output_stream.str ().substr (9, 64);
+}
+
+string pow_co::write (const Bitcoin::outpoint &o) {
+    std::stringstream output_stream;
+    write (output_stream, o);
+    return output_stream.str ();
+}
+
 Boost::prevout read_job (const JSON &job,
     net::HTTP::request &request,
     net::HTTP::response &response) {
@@ -68,11 +82,9 @@ list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
 }
 
 inpoint pow_co::spends (const Bitcoin::outpoint &outpoint) {
-    std::stringstream hash_stream;
-    hash_stream << outpoint.Digest;
     
     std::stringstream path_stream;
-    path_stream << "/api/v1/spends/" << hash_stream.str ().substr (9, 64) << "/" << outpoint.Index;
+    path_stream << "/api/v1/spends/" << write (outpoint.Digest) << "/" << outpoint.Index;
     
     auto request = this->REST.GET (path_stream.str ());
     auto response = this->operator () (request);
@@ -131,7 +143,7 @@ Boost::prevout pow_co::job (const Bitcoin::txid &txid) {
     hash_stream << txid;
     
     std::stringstream path_stream;
-    path_stream << "/api/v1/boost/jobs/" << hash_stream.str ().substr (9, 64);
+    write (path_stream << "/api/v1/boost/jobs/", txid);
     
     auto request = this->REST.GET (path_stream.str ());
     
@@ -140,8 +152,12 @@ Boost::prevout pow_co::job (const Bitcoin::txid &txid) {
     if (static_cast<unsigned int> (response.Status) >= 500)
         throw net::HTTP::exception{request, response, string {"problem reading txid."}};
     
-    if (static_cast<unsigned int> (response.Status) != 200)
+    if (static_cast<unsigned int> (response.Status) != 200) {
         std::cout << "pow co returns response code " << response.Status << std::endl;
+        std::cout << " response body " << response.Body << std::endl;
+
+        throw net::HTTP::exception {request, response, string {"HTTP error response."}};
+    }
     
     return read_job (JSON::parse (response.Body)["job"], request, response);
 }
@@ -151,7 +167,7 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
     hash_stream << o.Digest;
     
     std::stringstream path_stream;
-    path_stream << "/api/v1/boost/jobs/" << hash_stream.str ().substr (9, 64) << "_o" << o.Index;
+    write (path_stream << "/api/v1/boost/jobs/", o);
     
     auto request = this->REST.GET (path_stream.str ());
     
@@ -160,9 +176,13 @@ Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
     if (static_cast<unsigned int> (response.Status) >= 500)
         throw net::HTTP::exception {request, response, string {"problem reading txid."}};
     
-    if (static_cast<unsigned int> (response.Status) != 200)
+    if (static_cast<unsigned int> (response.Status) != 200) {
         std::cout << "pow co returns response code " << response.Status << std::endl;
-    std::cout << " response body " << response.Body << std::endl;
+        std::cout << " response body " << response.Body << std::endl;
+
+        throw net::HTTP::exception {request, response, string {"HTTP error response."}};
+    }
+
     return read_job (JSON::parse (response.Body)["job"], request, response);
 }
 

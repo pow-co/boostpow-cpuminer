@@ -225,6 +225,7 @@ satoshi_per_byte BoostPOW::network::mining_fee () {
 Boost::candidate BoostPOW::network::job (const Bitcoin::outpoint &o) {
     // check for job at pow co. 
     Boost::candidate x {{PowCo.job (o)}};
+
     // check for job with whatsonchain.
     auto script_hash = x.id ();
     
