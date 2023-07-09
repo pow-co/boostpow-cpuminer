@@ -23,8 +23,8 @@ namespace BoostPOW {
         std::map<digest256, working> Jobs;
         std::map<Bitcoin::outpoint, digest256> Scripts;
         
-        digest256 add_script (const Boost::output_script &z);
-        void add_prevout (const Boost::prevout &u);
+        digest256 add_script (const bytes &output_script);
+        void add_prevout (const Bitcoin::prevout &u);
 
         uint32 remove (function<bool (const working &)>);
 

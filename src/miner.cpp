@@ -256,7 +256,8 @@ namespace BoostPOW {
 
             Redeemers[i - 1]->mine (std::pair<digest256, Boost::puzzle>
                 {selected->first, Boost::puzzle {selected->second,
-                    selected->second.Script.Type == Boost::bounty ? Keys.next () : Keys[selected->second.Script.MinerPubkeyHash] }});
+                    Boost::output_script::type (selected->second.Script) == Boost::bounty ?
+                        Keys.next () : Keys[Boost::output_script::miner_pubkey_hash (selected->second.Script)] }});
         }
 
     }
@@ -276,7 +277,6 @@ namespace BoostPOW {
             if (err) throw exception {} << "unknown error: " << err;
 
             if (count % refresh_count == 0) {
-
                 std::cout << "About to call jobs API " << std::endl;
                 try {
                     self->update_jobs (self->Net.jobs (300, self->MaxDifficulty, self->MinValue));
@@ -354,7 +354,7 @@ namespace BoostPOW {
 
             handlers (manager &m) : Manager {m} {}
 
-            void job_created (const Boost::prevout &p) {
+            void job_created (const Bitcoin::prevout &p) {
                 std::cout << "new boost prevout received via websockets: " << p << std::endl;
                 Manager.new_job (p);
             };
@@ -402,14 +402,17 @@ namespace BoostPOW {
 
     }
 
-    void manager::new_job (const Boost::prevout &p) {
+    void manager::new_job (const Bitcoin::prevout &p) {
         std::unique_lock<std::mutex> lock (Mutex);
 
-        if (p.difficulty () > MaxDifficulty) return;
+        auto difficulty = work::difficulty (Boost::output_script::target (p.script ()));
 
-        if (p.profitability () < MinProfitability) {
-            if (auto it = Jobs.Jobs.find (p.id ()); it == Jobs.Jobs.end()) return;
-        }
+        if (difficulty > MaxDifficulty) return;
+
+        auto profitability = double (p.value ()) / difficulty;
+
+        if (profitability < MinProfitability)
+            if (auto it = Jobs.Jobs.find (SHA2_256 (p.script ())); it == Jobs.Jobs.end ()) return;
 
         Jobs.add_prevout (p);
         std::cout << "new job added" << std::endl;
@@ -478,9 +481,9 @@ namespace BoostPOW {
         uint32 contract_jobs = 0;
         uint32 impossible_contract_jobs = 0;
         for (auto it = Jobs.Jobs.cbegin (); it != Jobs.Jobs.cend ();)
-            if (it->second.Script.Type == Boost::contract) {
+            if (Boost::output_script::type (it->second.Script) == Boost::contract) {
                 contract_jobs++;
-                if (!Keys[it->second.Script.MinerPubkeyHash].valid ()) {
+                if (!Keys[Boost::output_script::miner_pubkey_hash (it->second.Script)].valid ()) {
                     impossible_contract_jobs++;
                     it = Jobs.Jobs.erase (it);
                 } else it++;

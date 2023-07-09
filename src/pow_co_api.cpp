@@ -16,7 +16,7 @@ string pow_co::write (const Bitcoin::outpoint &o) {
     return output_stream.str ();
 }
 
-Boost::prevout read_job (const JSON &job,
+Bitcoin::prevout read_job (const JSON &job,
     net::HTTP::request &request,
     net::HTTP::response &response) {
     
@@ -35,12 +35,12 @@ Boost::prevout read_job (const JSON &job,
     if (!script.valid ())
         throw net::HTTP::exception {request, response, "invalid boost script"};
     
-    return Boost::prevout {
+    return Bitcoin::prevout {
         Bitcoin::outpoint {txid, index},
-        Boost::output {Bitcoin::satoshi {value}, script}};
+        Bitcoin::output {Bitcoin::satoshi {value}, *script_bytes}};
 }
 
-list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
+list<Bitcoin::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
 
     std::cout << "getting " << limit << " jobs with max difficulty " << max_difficulty << std::endl;
     
@@ -66,9 +66,8 @@ list<Boost::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
         throw net::HTTP::exception {request, response, "expected content type application/JSON"};
     */
     
-    list<Boost::prevout> boost_jobs;
+    list<Bitcoin::prevout> boost_jobs;
     try {
-        
         JSON JSON_jobs = JSON::parse (response.Body).at ("jobs");
 
         std::cout << "returned " << JSON_jobs.size () << " jobs ..." << std::endl;
@@ -95,7 +94,8 @@ inpoint pow_co::spends (const Bitcoin::outpoint &outpoint) {
         throw net::HTTP::exception {request, response, ss.str () };
     }
     
-    list<Boost::prevout> boost_jobs;
+    list<Bitcoin::prevout> boost_jobs;
+
     try {
         if (response.Body == "") return {};
     } catch (const JSON::exception &j) {
@@ -131,6 +131,7 @@ bool pow_co::broadcast (const bytes &tx) {
     }
     
     std::cout << " pow co broadcast response body: " << response.Body << std::endl;
+
     try {
         return !JSON::parse (response.Body).contains ("error");
     } catch (const JSON::exception &) {
@@ -138,7 +139,7 @@ bool pow_co::broadcast (const bytes &tx) {
     }
 }
 
-Boost::prevout pow_co::job (const Bitcoin::txid &txid) {
+Bitcoin::prevout pow_co::job (const Bitcoin::txid &txid) {
     std::stringstream hash_stream;
     hash_stream << txid;
     
@@ -162,7 +163,7 @@ Boost::prevout pow_co::job (const Bitcoin::txid &txid) {
     return read_job (JSON::parse (response.Body)["job"], request, response);
 }
 
-Boost::prevout pow_co::job (const Bitcoin::outpoint &o) {
+Bitcoin::prevout pow_co::job (const Bitcoin::outpoint &o) {
     std::stringstream hash_stream;
     hash_stream << o.Digest;
     
@@ -192,7 +193,7 @@ bool pow_co::websockets_protocol_message::valid (const JSON &j) {
         j.contains ("content");
 }
 
-std::optional<Boost::prevout> pow_co::websockets_protocol_message::job_created (const JSON &j) {
+std::optional<Bitcoin::prevout> pow_co::websockets_protocol_message::job_created (const JSON &j) {
     if (!(j.is_object () &&
         j.contains ("txid") && j["txid"].is_string () &&
         j.contains ("script") && j["script"].is_string () &&
@@ -208,9 +209,9 @@ std::optional<Boost::prevout> pow_co::websockets_protocol_message::job_created (
     Bitcoin::txid txid {string {"0x"} + string (j["txid"])};
     if (!txid.valid ()) return {};
 
-    return Boost::prevout {
+    return Bitcoin::prevout {
         Bitcoin::outpoint {txid, uint32 (j["vout"])},
-        Boost::output {int64 (j["value"]), output_script}};
+        Bitcoin::output {int64 (j["value"]), *hex_decoded}};
 }
 
 std::optional<Bitcoin::outpoint> pow_co::websockets_protocol_message::proof_created (const JSON &j) {

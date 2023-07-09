@@ -160,7 +160,7 @@ namespace BoostPOW {
         
         int add_new_miner (ptr<redeemer>);
 
-        void new_job (const Boost::prevout &p);
+        void new_job (const Bitcoin::prevout &p);
         void solved_job (const Bitcoin::outpoint &p);
         
         virtual ~manager () {}

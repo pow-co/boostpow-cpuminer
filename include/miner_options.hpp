@@ -82,7 +82,7 @@ namespace BoostPOW {
         int (*help) (),
         int (*version) (),
         int (*spend) (const script_options &),
-        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64, const redeeming_options &),
+        int (*redeem) (const Bitcoin::outpoint &, const bytes &script, int64 value, const redeeming_options &),
         int (*mine) (const mining_options &));
 }
 

@@ -3,7 +3,7 @@
 #include "gtest/gtest.h"
 #include <stdio.h>
 
-std::optional<std::string> run(std::string command);
+std::optional<std::string> run (std::string command);
 
 struct test_case {
     std::string Input;
@@ -11,19 +11,19 @@ struct test_case {
     std::string ExpectedOutput;
     std::string Explain;
     
-    std::string command();
+    std::string command ();
     
-    std::optional<std::string> run();
+    std::optional<std::string> run ();
     
-    bool result() {
+    bool result () {
         auto r = run();
         return bool(r) ? ExpectedSuccess && *r == ExpectedOutput : !ExpectedSuccess;
     }
 };
 
-TEST(DetectBoostTest, TestDetectBoost) {
+TEST (DetectBoostTest, TestDetectBoost) {
     
-    std::vector<test_case> test_cases{{
+    std::vector<test_case> test_cases {{
         "", false, "", "should fail with no inputs."
     }, {
         "a b", false, "", "should fail with two inputs"
@@ -79,7 +79,7 @@ std::optional<std::string> run (std::string command) {
         std::string result;
         
         while (fgets (buf, 128, fp) != nullptr)
-            result += std::string{buf};
+            result += std::string {buf};
         
         if (pclose (fp)) return {};
         return result;
@@ -87,10 +87,10 @@ std::optional<std::string> run (std::string command) {
     } else throw data::exception {"could not open pipe"};
 }
     
-std::string test_case::command() {
+std::string test_case::command () {
     return std::string {"../test/DetectBoost "} + Input;
 }
     
-std::optional<std::string> test_case::run() {
+std::optional<std::string> test_case::run () {
     return ::run (command ());
 }
