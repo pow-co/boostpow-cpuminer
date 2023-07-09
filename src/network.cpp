@@ -66,7 +66,7 @@ map<digest256, list<Bitcoin::txid>> History;
 BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int64 min_value) {
     
     std::lock_guard<std::mutex> lock (Mutex);
-    const list<Boost::prevout> jobs_api_call {PowCo.jobs (limit, max_difficulty)};
+    const list<Bitcoin::prevout> jobs_api_call {PowCo.jobs (limit, max_difficulty)};
     
     BoostPOW::jobs Jobs {};
     
@@ -77,21 +77,21 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
     
     json::array_t redemptions;
     
-    std::map<digest256, list<Boost::prevout>> prevouts;
+    std::map<digest256, list<Bitcoin::prevout>> prevouts;
     
     std::cout << "Jobs returned from API: " << jobs_api_call.size () << std::endl;
     
     // organize all jobs in terms of script hash. 
-    for (const Boost::prevout &job : jobs_api_call) {
-        digest256 script_hash = job.id ();
+    for (const Bitcoin::prevout &job : jobs_api_call) {
+        digest256 script_hash = SHA2_256 (job.script ());
         if (auto j = prevouts.find (script_hash); j != prevouts.end ()) j->second <<= job; 
-        else prevouts[script_hash] = list<Boost::prevout> {job};
+        else prevouts[script_hash] = list<Bitcoin::prevout> {job};
     }
     
     std::cout << "found " << prevouts.size () << " separate scripts." << std::endl;
     
     // check on jobs that have been closed and are incorrectly being returned.
-    auto count_closed_job = [this, &count_closed_jobs, &redemptions] (const Boost::prevout &job) -> void {
+    auto count_closed_job = [this, &count_closed_jobs, &redemptions] (const Bitcoin::prevout &job) -> void {
         std::cout << "  reporting closed job " << job << std::endl;
         count_closed_jobs++;
         
@@ -110,7 +110,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
         
         // if it fails, use whatsonchain.
         if (!in.valid ()) {
-            auto script_hash = job.id ();
+            auto script_hash = SHA2_256 (job.script ());
             
             auto history = History.contains (script_hash);
             
@@ -169,9 +169,9 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
         
         list<UTXO> script_utxos = WhatsOnChain.script ().get_unspent (script_hash);
         std::cout << "  got unspent scripts " << script_utxos << std::endl;
-        list<Boost::prevout> unspent;
+        list<Bitcoin::prevout> unspent;
         
-        for (const Boost::prevout &p : pair.second) {
+        for (const Bitcoin::prevout &p : pair.second) {
             std::cout << "    " << p.outpoint () << std::endl;
             bool closed = true;
             
@@ -187,7 +187,7 @@ BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int
         if (!data::empty (unspent)) {
             Jobs.add_script (unspent.first ().script ());
             
-            for (const Boost::prevout &p : unspent) {
+            for (const Bitcoin::prevout &p : unspent) {
                 count_open_jobs++;
                 
                 if (p.value () < min_value) count_low_value_jobs++;
@@ -235,7 +235,7 @@ Boost::candidate BoostPOW::network::job (const Bitcoin::outpoint &o) {
     bool match_found = false;
     
     for (auto const &u : script_utxos) {
-        x = x.add (Boost::prevout {u.Outpoint, Boost::output {u.Value, x.Script}});
+        x = x.add (Bitcoin::prevout {u.Outpoint, Bitcoin::output {u.Value, x.Script}});
         
         if (u.Outpoint == o) match_found = true;
     }

@@ -16,7 +16,7 @@ namespace BoostPOW {
         return 0;
     }
 
-    int redeem (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const redeeming_options &) {
+    int redeem (const Bitcoin::outpoint &, const bytes &, int64_t, const redeeming_options &) {
         return 0;
     }
 

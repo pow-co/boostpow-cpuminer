@@ -9,9 +9,11 @@ using namespace Gigamonkey;
 
 struct inpoint : Bitcoin::outpoint {
     using Bitcoin::outpoint::outpoint;
+
     bool valid () const {
         return this->Digest.valid ();
     }
+
     inpoint (const Bitcoin::txid &t, uint32 i) : outpoint {t, i} {}
 };
 
@@ -23,10 +25,10 @@ struct pow_co : net::HTTP::client_blocking {
     pow_co (net::asio::io_context &io, ptr<net::HTTP::SSL> ssl, string host = "pow.co") :
         net::HTTP::client_blocking {ssl, net::HTTP::REST {"https", host}, tools::rate_limiter {3, 1}}, IO {io}, SSL {ssl} {}
     
-    list<Boost::prevout> jobs (uint32 limit = 10, double max_difficulty = -1);
+    list<Bitcoin::prevout> jobs (uint32 limit = 10, double max_difficulty = -1);
     
-    Boost::prevout job (const Bitcoin::txid &);
-    Boost::prevout job (const Bitcoin::outpoint &);
+    Bitcoin::prevout job (const Bitcoin::txid &);
+    Bitcoin::prevout job (const Bitcoin::outpoint &);
     
     inpoint spends (const Bitcoin::outpoint &);
     
@@ -47,12 +49,12 @@ struct pow_co : net::HTTP::client_blocking {
         static JSON encode (string type, const JSON &content);
         static bool valid (const JSON &);
 
-        static std::optional<Boost::prevout> job_created (const JSON &);
+        static std::optional<Bitcoin::prevout> job_created (const JSON &);
         static std::optional<Bitcoin::outpoint> proof_created (const JSON &);
     };
 
     struct websockets_protocol_handlers {
-        virtual void job_created (const Boost::prevout &) = 0;
+        virtual void job_created (const Bitcoin::prevout &) = 0;
         virtual ~websockets_protocol_handlers () {}
     };
 

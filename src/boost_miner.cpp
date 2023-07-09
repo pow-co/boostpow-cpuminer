@@ -8,6 +8,11 @@
 #include <gigamonkey/script/typed_data_bip_276.hpp>
 #include <gigamonkey/schema/hd.hpp>
 
+#include <gigamonkey/ledger.hpp>
+#include <gigamonkey/script/machine.hpp>
+#include <gigamonkey/signature.hpp>
+#include <data/io/wait_for_enter.hpp>
+
 using namespace Gigamonkey;
 
 int spend (const BoostPOW::script_options &options) {
@@ -142,7 +147,7 @@ struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
 
 int redeem (
     const Bitcoin::outpoint &outpoint,
-    const Boost::output_script &script,
+    const bytes &script,
     int64 value,
     const BoostPOW::redeeming_options &options) {
 
@@ -152,9 +157,9 @@ int redeem (
 
     Boost::candidate Job {};
 
-    Boost::output_script boost_script {};
+    bytes boost_script {};
 
-    if (value <= 0 || !script.valid ()) {
+    if (value <= 0 || !Boost::output_script {script}.valid ()) {
 
         Job = Net.job (outpoint);
         
@@ -170,9 +175,9 @@ int redeem (
     } else {
         boost_script = script;
         Job = Boost::candidate {
-            {Boost::prevout {
+            {Bitcoin::prevout {
                 outpoint,
-                Boost::output {
+                Bitcoin::output {
                     Bitcoin::satoshi {value},
                     script}
             }}};
@@ -188,7 +193,7 @@ int redeem (
     auto address = options.ReceivingAddresses->next ();
     
     logger::log ("job.mine", JSON {
-      {"script", typed_data::write (typed_data::mainnet, boost_script.write ())},
+      {"script", typed_data::write (typed_data::mainnet, boost_script)},
       {"difficulty", double (Job.difficulty ())},
       {"value", value},
       {"outpoint", BoostPOW::write (outpoint)},
@@ -202,9 +207,7 @@ int redeem (
     r.mine ({Job.id (), Boost::puzzle {Job, key}});
     
     r.wait_for_shutdown ();
-    std::cout << "shut down... deleting fees " << std::endl;
     delete Fees;
-    std::cout << "fees deleted " << std::endl;
     return 0;
 }
 

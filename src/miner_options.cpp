@@ -116,15 +116,24 @@ namespace BoostPOW {
 
     }
 
-    Boost::output_script read_output_script (const string &script_string) {
+    maybe<bytes> read_output_script (const string &script_string) {
 
         maybe<bytes> script_from_hex = encoding::hex::read (script_string);
         typed_data script_from_bip_276 = typed_data::read (script_string);
 
-        if (script_from_bip_276.valid ()) return Boost::output_script::read (script_from_bip_276.Data);
-        else if (bool (script_from_hex)) return Boost::output_script::read (*script_from_hex);
+        Boost::output_script read_script {};
 
-        return Boost::output_script {};
+        if (script_from_bip_276.valid ()) {
+            if (Boost::output_script::read (script_from_bip_276.Data).valid ())
+                return script_from_bip_276.Data;
+            else return {};
+        } else if (bool (script_from_hex)) {
+            if (Boost::output_script::read (*script_from_hex).valid ())
+                return script_from_hex;
+            else return {};
+        }
+
+        return {};
 
     }
 
@@ -140,10 +149,10 @@ namespace BoostPOW {
     }
 
     int run_redeem (const argh::parser &command_line,
-        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64_t, const redeeming_options &)) {
+        int (*redeem) (const Bitcoin::outpoint &, const bytes &script, int64_t value, const redeeming_options &)) {
 
         Bitcoin::outpoint outpoint {};
-        Boost::output_script boost_script {};
+        maybe<bytes> boost_script {};
 
         string first_arg;
         if (auto positional = command_line (2); positional) {
@@ -152,7 +161,7 @@ namespace BoostPOW {
             // Test another way to read inputs for backwards compatibilty.
             // In an earlier version of the program, the boost script came first.
             boost_script = read_output_script (first_arg);
-            if (boost_script.valid ()) {
+            if (bool (boost_script)) {
 
                 // since a boost script was provided, we look to the next argument to be a satoshi value.
                 int64 sats = read_satoshi_value (command_line, 3);
@@ -172,7 +181,7 @@ namespace BoostPOW {
 
                 read_redeem_options (r, command_line, 6, 7);
 
-                return redeem (outpoint, boost_script, sats, r);
+                return redeem (outpoint, *boost_script, sats, r);
             }
 
         } else if (auto option = command_line ("txid"); option) option >> first_arg;
@@ -196,14 +205,14 @@ namespace BoostPOW {
             else goto no_script_provided;
 
             boost_script = read_output_script (script_string);
-            if (!boost_script.valid ()) throw data::exception {"could not read script"};
+            if (!bool (boost_script)) throw data::exception {"could not read script"};
         }
 
         no_script_provided:
 
         int64 satoshi_value = read_satoshi_value (command_line, 6);
 
-        return redeem (outpoint, boost_script, satoshi_value, options);
+        return redeem (outpoint, *boost_script, satoshi_value, options);
 
     }
 
@@ -227,7 +236,7 @@ namespace BoostPOW {
         int (*help) (),
         int (*version) (),
         int (*spend) (const script_options &),
-        int (*redeem) (const Bitcoin::outpoint &, const Boost::output_script &, int64, const redeeming_options &),
+        int (*redeem) (const Bitcoin::outpoint &, const bytes &script, int64 value, const redeeming_options &),
         int (*mine) (const mining_options &)) {
 
         try {

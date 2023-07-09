@@ -14,18 +14,19 @@ namespace BoostPOW {
         return weight * (this->profitability () - minimum_profitability);
     }
     
-    digest256 jobs::add_script (const Boost::output_script &z) {
-        auto script_hash = SHA2_256 (z.write ());
+    digest256 jobs::add_script (const bytes &script) {
+        auto script_hash = SHA2_256 (script);
         auto script_location = Jobs.find (script_hash);
-        if (script_location == Jobs.end ()) Jobs[script_hash] = Boost::candidate {z};
+        if (script_location == Jobs.end ()) Jobs[script_hash] = Boost::candidate {};
         return script_hash;
     }
 
-    void jobs::add_prevout (const Boost::prevout &u) {
-        auto script_location = Jobs.find (u.id ());
+    void jobs::add_prevout (const Bitcoin::prevout &u) {
+        auto id = SHA2_256 (u.script ());
+        auto script_location = Jobs.find (id);
         if (script_location != Jobs.end ()) script_location->second = script_location->second.add (u);
-        else Jobs[u.id ()] = Boost::candidate {{u}};
-        Scripts[u.Key] = u.id ();
+        else Jobs[id] = Boost::candidate {{u}};
+        Scripts[u.Key] = id;
     }
 
     uint32 jobs::remove (function<bool (const working &)> f) {
@@ -103,7 +104,7 @@ namespace BoostPOW {
         }
         
         return JSON {
-            {"script", typed_data::write (typed_data::mainnet, c.Script.write ())},
+            {"script", typed_data::write (typed_data::mainnet, c.Script)},
             {"prevouts", arr}, 
             {"value", int64 (c.value ())},
             {"profitability", c.profitability ()},
