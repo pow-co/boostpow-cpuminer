@@ -1,0 +1,40 @@
+from conan import ConanFile
+from conan.tools.cmake import CMakeToolchain, CMake, cmake_layout, CMakeDeps
+
+
+
+class BoostMinerConan (ConanFile):
+    name = "boostminer"
+    version = "0.2.6"
+    license = "Proprietary"
+    author = "Proof of Work Company"
+    url = "https://github.com/ProofOfWorkCompany/BoostMiner"
+    description = "Worker for Mining Boost Puzzles on Bitcoin"
+    topics = ("bitcoin", "mining", "cpu", "sha256", "proofofwork", "boost")
+    settings = "os", "compiler", "build_type", "arch"   
+    options = {"shared": [True, False], "fPIC": [True, False]}
+    default_options = {"shared": False, "fPIC": True}
+    exports_sources = "src/*", "CMakeLists.txt"
+    requires = "argh/1.3.2", "gigamonkey/v0.0.13@proofofwork/stable", "gtest/1.12.1"
+
+    def layout(self):
+        cmake_layout(self)
+
+    def generate(self):
+        deps = CMakeDeps(self)
+        deps.generate()
+        tc = CMakeToolchain(self)
+        tc.generate()
+
+    def config_options (self):
+        if self.settings.os == "Windows":
+            del self.options.fPIC
+
+    def build (self):
+        cmake = CMake (self)
+        cmake.configure ()
+        cmake.build ()
+
+    def package(self):
+        cmake = CMake(self)
+        cmake.install()

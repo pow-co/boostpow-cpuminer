@@ -1,421 +1,316 @@
-#include <gigamonkey/boost/boost.hpp>
 #include <ctime>
-#include "./logger.cpp"
+#include <logger.hpp>
+#include <network.hpp>
+#include <miner.hpp>
+#include <miner_options.hpp>
+#include <gigamonkey/p2p/var_int.hpp>
+#include <gigamonkey/script/pattern/pay_to_address.hpp>
+#include <gigamonkey/script/typed_data_bip_276.hpp>
+#include <gigamonkey/schema/hd.hpp>
+
+#include <gigamonkey/ledger.hpp>
+#include <gigamonkey/script/machine.hpp>
+#include <gigamonkey/signature.hpp>
+#include <data/io/wait_for_enter.hpp>
 
 using namespace Gigamonkey;
-using nlohmann::json;
 
-Bitcoin::satoshi calculate_fee(Bitcoin::ledger::prevout prevout, bytes pay_script, double fee_rate) {
+int spend (const BoostPOW::script_options &options) {
 
-  Boost::output_script output_script{prevout.value().Script};
-
-  data::uint32 estimated_tx_size
-    = 4                  // tx version
-    + 1                  // var int value 1 (to say how many inputs there are)
-    + 36                 // outpoint
-                         // input script size with signature max size
-    + Boost::input_script::expected_size(output_script.Type, output_script.UseGeneralPurposeBits)
-    + 4                  // sequence number
-    + 1                  // var int value 1 (number of outputs)
-    + 8                  // satoshi value size
-    + pay_script.size()  // output script size
-    + 4;                 // locktime
-
-  Bitcoin::satoshi spent = prevout.Value.Value;
-
-  Bitcoin::satoshi fee = ceil(estimated_tx_size * fee_rate);
-
-  if (fee > spent) throw "Cannot pay tx fee with boost output";
-
-  return fee;
-}
-
-// A cpu miner function. 
-work::proof cpu_solve(const work::puzzle& p, const work::solution& initial) {
-    using uint256 = Gigamonkey::uint256;
-    
-    //if (initial.Share.ExtraNonce2.size() != 4) throw "Extra nonce 2 must have size 4. We will remove this limitation eventually.";
-    
-    uint64_big extra_nonce_2; 
-    std::copy(initial.Share.ExtraNonce2.begin(), initial.Share.ExtraNonce2.end(), extra_nonce_2.begin());
-    
-    uint256 target = p.Candidate.Target.expand();
-    if (target == 0) return {};
-    //std::cout << " working " << p << std::endl;
-    //std::cout << " with target " << target << std::endl;
-    
-    uint256 best{"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-    
-    N total_hashes{0};
-    N nonce_increment{"0x0100000000"};
-    uint32 display_increment = 0x00800000;
-    
-    work::proof pr{p, initial};
-    
-    while(true) {
-        uint256 hash = pr.string().hash();
-        total_hashes++;
-        
-        if (hash < best) {
-            best = hash;
-
-            logger::log("besthash", json {
-              {"hash", best},
-              {"total", uint64(total_hashes)}
-            });
-
-        } else if (pr.Solution.Share.Nonce % display_increment == 0) {
-            pr.Solution.Share.Timestamp = Bitcoin::timestamp::now();
-        }
-        
-        if (hash < target) {
-            return pr;
-        }
-        
-        pr.Solution.Share.Nonce++;
-        
-        if (pr.Solution.Share.Nonce == 0) {
-            extra_nonce_2++;
-            std::copy(extra_nonce_2.begin(), extra_nonce_2.end(), pr.Solution.Share.ExtraNonce2.begin());
-        }
-    }
-    
-    return pr;
-}
-
-// Some stuff having to do with random number generators. We do not need 
-// strong cryptographic random numbers for boost. It is fine to use 
-// basic random number generators that you would use in a game or something. 
-template <typename engine>
-double random_range01(engine& gen) {
-    static std::uniform_real_distribution<double> dis(0.0, 1.0);
-    return dis(gen);
-}
-
-template <typename engine>
-data::uint64 random_uint64(engine& gen) {
-    static std::uniform_int_distribution<data::uint64> dis(
-        std::numeric_limits<data::uint64>::min(),
-        std::numeric_limits<data::uint64>::max()
-    );
-    return dis(gen);
-}
-
-template <typename engine>
-data::uint32 random_uint32(engine& gen) {
-    static std::uniform_int_distribution<data::uint32> dis(
-        std::numeric_limits<data::uint32>::min(),
-        std::numeric_limits<data::uint32>::max()
-    );
-    return dis(gen);
-}
-
-int spend(int arg_count, char** arg_values) {
-    if (arg_count < 4 || arg_count > 5) throw "invalid number of arguments; should be 4 or 5";
-    
-    string content_hash_hex{arg_values[0]};
-    
-    // Content is what is to be boosted. Could be a hash or
-    // could be text that's 32 bytes or less. There is a
-    // BIG PROBLEM with the fact that hashes in Bitcoin are 
-    // often displayed reversed. This is a convention that
-    // got started long ago because people were stupid. 
-
-    // For average users of boost, we need to ensure that 
-    // the hash they are trying to boost actually exists. We 
-    // should not let them paste in hashes to boost; we should
-    // make them select content to be boosted. 
-
-    // In my library, we read the string backwards by putting
-    // an 0x at the front. 
-    digest256 content{content_hash_hex};
-    if (!content.valid()) throw (string{"could not read content: "} + content_hash_hex);
-    
-    double diff = 0;
-    string difficulty_input{arg_values[1]};
-    std::stringstream diff_stream{difficulty_input};
-    diff_stream >> diff;
-    
-    // difficulty is a unit that is inversely proportional to 
-    // target. One difficulty is proportional to 2^32
-    // expected hash operations. 
-    
-    // a difficulty of 1/1000 should be easy to do on a cpu quickly. 
-    // Difficulty 1 is the difficulty of the genesis block. 
-    work::compact target{work::difficulty{diff}};
-    if (!target.valid()) throw (string{"could not read difficulty: "} + difficulty_input);
-    
-    //std::cout << "target: " << target << std::endl;
-    
-    // Tag/topic does not need to be anything. 
-    ptr<bytes> topic = encoding::hex::read(string{arg_values[2]});
-    if (topic == nullptr || topic->size() > 20) throw (string{"could not read topic: "} + string{arg_values[2]});
-    
-    // additional data does not need to be anything but it 
-    // can be used to provide information about a boost or
-    // to add a comment. 
-    ptr<bytes> additional_data = encoding::hex::read(string{arg_values[3]});
-    if (additional_data == nullptr) throw (string{"could not read additional_data: "} + string{arg_values[3]});
+    work::compact target {work::difficulty {options.Difficulty}};
+    if (!target.valid ()) throw data::exception {} << "could not read difficulty " << options.Difficulty;
     
     // Category has no particular meaning. We could use it for
     // something like magic number if we wanted to imitate 21e8. 
-    int32_little category = 0;
+    int32_little category {options.Category ? *options.Category : 0};
     
     // User nonce is for ensuring that no two scripts are identical. 
     // You can increase the bounty for a boost by making an identical script. 
-    uint32_little user_nonce{random_uint32(get_random_engine())};
+    uint32_little user_nonce {options.UserNonce ? *options.UserNonce : BoostPOW::casual_random {}.uint32 ()};
     
     // we are using version 1 for now. 
     // we will use version 2 when we know we have Stratum extensions right. 
-
+    
     // This has to do with whether we use boost v2 which
     // incorporates bip320 which is necessary for ASICBoost. 
     // This is not necessary for CPU mining. 
-    bool use_general_purpose_bits = false;
+    bool use_general_purpose_bits = options.Version == 2;
     
     Boost::output_script output_script;
-
+    bytes output_script_bytes;
+    
     // If you use a bounty script, other people can 
     // compete with you to mine a boost output if you 
     // broadcast it before you broadcast the solution. 
-
+    
     // If you use a contract script, then you are the only
     // one who can mine that boost output. 
-    if (arg_count == 4) {
-        output_script = Boost::output_script::bounty(
-            category, 
-            content, 
-            target, 
-            *topic, 
-            user_nonce, 
-            *additional_data, 
+    
+    std::cout << "topic: " << options.Topic << "; data: " << options.Data << std::endl;
+
+    if (options.MinerPubkeyHash) {
+        std::cout << "miner address: " << *options.MinerPubkeyHash << std::endl;
+
+        output_script = Boost::output_script::contract (
+            category, options.Content, target,
+            bytes::from_string (options.Topic),
+            user_nonce,
+            bytes::from_string (options.Data),
+            *options.MinerPubkeyHash,
             use_general_purpose_bits);
-      logger::log("job.create", json {
-          {"target", target},
-          {"difficulty", diff},
-          {"content", content_hash_hex},
-          {"script", {
-            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
-            {"hex",output_script.write()}
-          }}
-      });
+
+        output_script_bytes = output_script.write ();
+
+        logger::log ("job.create", JSON {
+            {"target", target},
+            {"difficulty", options.Difficulty},
+            {"content", BoostPOW::write (options.Content)},
+            {"miner", Bitcoin::address (Bitcoin::address::main, *options.MinerPubkeyHash)},
+            {"script", {
+                {"asm", Bitcoin::ASM (output_script_bytes)},
+                {"hex", encoding::hex::write (output_script_bytes)}
+            }}
+        });
     } else {
-        Bitcoin::address miner_address{arg_values[4]};
-        if (!miner_address.valid()) throw (string{"could not read miner address: "} + string{arg_values[4]});
-        
-        output_script = Boost::output_script::contract(
-            category, 
-            content, 
-            target, 
-            *topic, 
-            user_nonce, 
-            *additional_data, 
-            miner_address.Digest, 
+        output_script = Boost::output_script::bounty (
+            category, options.Content, target,
+            bytes::from_string (options.Topic),
+            user_nonce,
+            bytes::from_string (options.Data),
             use_general_purpose_bits);
 
-      logger::log("job.create", json {
-          {"target", target},
-          {"difficulty", diff},
-          {"content", content_hash_hex},
-          {"miner", arg_values[4]},
-          {"script", {
-            {"asm",Bitcoin::interpreter::ASM(output_script.write())},
-            {"hex",output_script.write()}
-          }}
-      });
+        output_script_bytes = output_script.write ();
+
+        logger::log ("job.create", JSON {
+            {"target", target},
+            {"difficulty", options.Difficulty},
+            {"content", BoostPOW::write (options.Content)},
+            {"script", {
+                {"asm", Bitcoin::ASM (output_script_bytes)},
+                {"hex", encoding::hex::write (output_script_bytes)}
+            }}
+        });
     }
 
+    std::cout << "To spend to this job, paste into electrum-sv: \"" << 
+        typed_data::write (typed_data::mainnet, output_script_bytes) << "\"" << std::endl;
     
     return 0;
 }
 
-json solution_to_json(work::solution x) {
-
-    json share {
-        {"timestamp", data::encoding::hex::write(x.Share.Timestamp.Value)},
-        {"nonce", data::encoding::hex::write(x.Share.Nonce)},
-        {"extra_nonce_2", data::encoding::hex::write(x.Share.ExtraNonce2) }
-    };
+struct redeemer final : BoostPOW::redeemer, BoostPOW::multithreaded {
+    BoostPOW::network &Net;
+    BoostPOW::fees &Fees;
+    digest160 Address;
     
-    if (x.Share.Bits) share["bits"] = data::encoding::hex::write(*x.Share.Bits);
+    redeemer (
+        BoostPOW::network &net, 
+        BoostPOW::fees &fees, 
+        const digest160 &address,
+        uint32 threads, uint64 random_seed) : 
+        Net {net}, Fees {fees}, Address {address},
+        BoostPOW::redeemer {}, BoostPOW::multithreaded {threads, random_seed} {
+        this->start_threads ();
+    }
     
-    return json {
-        {"share", share}, 
-        {"extra_nonce_1", data::encoding::hex::write(x.ExtraNonce1)}
-    };
-}
-
-Bitcoin::transaction mine(
-    // an unredeemed Boost PoW output 
-    Bitcoin::ledger::prevout prevout, 
-    // The private key that you will use to redeem the boost output. This key 
-    // corresponds to 'miner address' in the Boost PoW protocol. 
-    Bitcoin::secret private_key, 
-    // the address you want the bitcoins to go to once you have redeemed the boost output.
-    // this is not the same as 'miner address'. This is just an address in your 
-    // normal wallet and should not be the address that goes along with the key above.
-    Bitcoin::address address) {
-    using namespace Bitcoin;
-    
-    // Is this a boost output? 
-    Boost::output_script output_script{prevout.value().Script}; 
-    if (!output_script.valid()) throw "Not a valid Boost output script";
-    
-    // If this is a contract script, we need to check that the key we have been given corresponds 
-    // to the miner address in the script. 
-    if (output_script.Type == Boost::contract && output_script.MinerAddress != private_key.address().Digest)
-        throw "Incorrect key provided to mine this output.";
+    void submit (const std::pair<digest256, Boost::puzzle> &puzzle, const work::solution &solution) final override {
         
-    // is the difficulty too high?
-    if (output_script.Target.difficulty() > 1.01) {
-      //std::cout << "warning: difficulty may be too high for CPU mining." << std::endl;
+        double fee_rate {Fees.get ()};
+        
+        auto value = puzzle.second.value ();
+        bytes pay_script = pay_to_address::script (Address);
+        auto expected_inputs_size = puzzle.second.expected_size ();
+        auto estimated_size = BoostPOW::estimate_size (expected_inputs_size, pay_script.size ());
+
+        Bitcoin::satoshi fee {int64 (ceil (fee_rate * estimated_size))};
+        
+        if (fee > value) throw data::exception {"Cannot pay tx fee with boost output"};
+        
+        auto redeem_tx = BoostPOW::redeem_puzzle (puzzle.second, solution, {Bitcoin::output {value - fee, pay_script}});
+        
+        logger::log ("job.complete.transaction", JSON {
+            {"txid", BoostPOW::write (redeem_tx.id ())},
+            {"txhex", encoding::hex::write (bytes (redeem_tx))}
+        });
+        
+        if (!Net.broadcast (bytes (redeem_tx))) std::cout << "broadcast failed!" << std::endl;
+        
+        std::unique_lock<std::mutex> lock (BoostPOW::redeemer::Mutex);
+        Solved = true;
+        Last = std::pair<digest256, Boost::puzzle> {};
+        std::cout << "about to close channel" << std::endl;
+        this->close ();
+
+        Out.notify_one ();
+    }
+};
+
+int redeem (
+    const Bitcoin::outpoint &outpoint,
+    const bytes &script,
+    int64 value,
+    const BoostPOW::redeeming_options &options) {
+
+    BoostPOW::network Net = (options.APIHost) ?
+        BoostPOW::network {*options.APIHost} :
+        BoostPOW::network {};
+
+    Boost::candidate Job {};
+
+    bytes boost_script {};
+
+    if (value <= 0 || !Boost::output_script {script}.valid ()) {
+
+        Job = Net.job (outpoint);
+        
+        if (value <= 0) value = Job.value ();
+        else if (value != Job.value ()) throw data::exception {"User provided value is incorrect"};
+        
+        if (!script.valid ()) boost_script = Job.Script;
+        else {
+            if (script != Job.Script) throw data::exception {"User provided script is incorrect"};
+            boost_script = script;
+        }
+        
+    } else {
+        boost_script = script;
+        Job = Boost::candidate {
+            {Bitcoin::prevout {
+                outpoint,
+                Bitcoin::output {
+                    Bitcoin::satoshi {value},
+                    script}
+            }}};
     }
     
-    // is the value in the output high enough? 
-    Boost::puzzle boost_puzzle{output_script, private_key};
+    if (!Job.valid ()) throw data::exception {"script is not valid"};
     
-    auto generator = data::get_random_engine();
-    
-    Stratum::session_id extra_nonce_1{random_uint32(generator)};
-    uint64_big extra_nonce_2{random_uint64(generator)};
-    
-    work::solution initial{timestamp::now(), 0, bytes_view(extra_nonce_2), extra_nonce_1};
-    
-    if (output_script.UseGeneralPurposeBits) initial.Share.Bits = random_uint32(generator);
-    
-    work::proof proof = ::cpu_solve(work::puzzle(boost_puzzle), initial);
+    BoostPOW::fees *Fees = bool (options.FeeRate) ?
+        (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :
+        (BoostPOW::fees *) (new BoostPOW::network_fees (Net));
 
-    bytes pay_script = pay_to_address::script(address.Digest);
-
-    double fee_rate = 0.5;
-
-    Bitcoin::satoshi fee { calculate_fee(prevout, pay_script, fee_rate) };
+    auto key = options.SigningKeys->next ();
+    auto address = options.ReceivingAddresses->next ();
     
-    // the incomplete transaction 
-    incomplete::transaction incomplete{ 
-        {incomplete::input{prevout.key()}}, // one incomplete input 
-        {output{prevout.Value.Value - fee, pay_script}}}; // one output 
-    
-    // signature
-    signature signature = private_key.sign( 
-        signature::document{
-            prevout.value(),         // output being redeemed
-            incomplete,              // the incomplete tx
-            0});                     // index of input that will contain this signature
-    
-    Boost::input_script input_script = Boost::input_script(
-            signature, private_key.to_public(), proof.Solution, output_script.Type, output_script.UseGeneralPurposeBits);
-
-    data::bytes redeemhex = input_script.write();
-
-    std::string redeemhexstring = data::encoding::hex::write(redeemhex);
-
-    //std::cout << "job.complete.redeemscript " << redeemhexstring << std::endl;
-    
-    logger::log("job.complete.redeemscript", json {
-      {"solution", solution_to_json(proof.Solution)},
-      {"asm", interpreter::ASM(input_script.write())},
-      {"hex", redeemhexstring },
-      {"fee", fee}
-    });
-
-    // the transaction 
-    return incomplete.complete({input_script.write()});
-    
-}
-
-int redeem(int arg_count, char** arg_values) {
-    if (arg_count != 6) throw "invalid number of arguments; should be 6";
-    
-    string arg_script{arg_values[0]};
-    string arg_value{arg_values[1]};
-    string arg_txid{arg_values[2]};
-    string arg_index{arg_values[3]};
-    string arg_wif{arg_values[4]};
-    string arg_address{arg_values[5]};
-    
-    ptr<bytes> script = encoding::hex::read(arg_script);
-    if (script == nullptr) throw "could not read script"; 
-    
-    int64 value;
-    std::stringstream{arg_value} >> value;
-    
-    Bitcoin::txid txid{arg_txid};
-    if (!txid.valid()) throw "could not read txid";
-    
-    uint32 index;
-    std::stringstream{arg_index} >> index;
-    
-    Bitcoin::address address{arg_address};
-    if (!address.valid()) throw "could not read address";
-    
-    Bitcoin::secret key{arg_wif};
-    if (!key.valid()) throw "could not read secret key";
-
-    logger::log("job.mine", json {
-      {"script", arg_values[0]},
-      {"value", arg_values[1]},
-      {"txid", arg_values[2]},
-      {"vout", arg_values[3]},
-      {"miner", key.address().write()},
-      {"recipient", address.write()}
+    logger::log ("job.mine", JSON {
+      {"script", typed_data::write (typed_data::mainnet, boost_script)},
+      {"difficulty", double (Job.difficulty ())},
+      {"value", value},
+      {"outpoint", BoostPOW::write (outpoint)},
+      {"miner", key.address ()},
+      {"recipient", string (address)}
     });
     
-    Bitcoin::transaction tx = mine(
-        Bitcoin::ledger::prevout{
-            Bitcoin::outpoint{txid, index}, 
-            Bitcoin::output{Bitcoin::satoshi{value}, *script}}, 
-        key, address);
-
-
-    std::string txhex = data::encoding::hex::write(tx.write());
-
-    //std::cout << "job.complete.transaction " << txhex << std::endl;
-
-    logger::log("job.complete.transaction", json {
-      {"txhex", txhex}
-    });
+    redeemer r {Net, *Fees, address.Digest, options.Threads,
+        std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337};
     
+    r.mine ({Job.id (), Boost::puzzle {Job, key}});
+    
+    r.wait_for_shutdown ();
+    delete Fees;
     return 0;
 }
 
-int help() {
+struct manager : BoostPOW::manager {
+    
+    struct local_redeemer final : BoostPOW::manager::redeemer, BoostPOW::channel {
+        std::thread Worker;
+        local_redeemer (
+            manager *m, 
+            uint64 random_seed, uint32 index) : 
+            manager::redeemer {m},
+            BoostPOW::channel {},
+            Worker {std::thread {BoostPOW::mining_thread,
+                &static_cast<work::selector &> (*this),
+                new BoostPOW::casual_random {random_seed}, index}} {}
+    };
+        
+    manager (
+        BoostPOW::network &net, 
+        BoostPOW::fees &f,
+        const BoostPOW::map_key_database &keys,
+        address_source &addresses,
+        uint64 random_seed, 
+        double maximum_difficulty, 
+        double minimum_profitability, 
+        uint64 min_value, int threads):
+        BoostPOW::manager {net, f, keys, addresses, random_seed, maximum_difficulty, minimum_profitability, min_value} {
+        
+        std::cout << "starting " << threads << " threads." << std::endl;
+        for (int i = 1; i <= threads; i++) 
+            this->add_new_miner (ptr<BoostPOW::manager::redeemer> {new local_redeemer (this, random_seed + i, i)});
+    }
+};
 
-    std::cout << "input should be \"function\" \"args\"... where function is "
-        "\n\tspend      -- create a Boost output."
+int mine (const BoostPOW::mining_options &options) {
+    
+    std::cout << "about to start running" << std::endl;
+
+    BoostPOW::network Net = (options.APIHost) ?
+        BoostPOW::network {*options.APIHost} :
+        BoostPOW::network {};
+
+    BoostPOW::fees *Fees = bool (options.FeeRate) ?
+        (BoostPOW::fees *) (new BoostPOW::given_fees (*options.FeeRate)) :
+        (BoostPOW::fees *) (new BoostPOW::network_fees (Net));
+    
+    std::make_shared<manager> (Net, *Fees, *options.SigningKeys, *options.ReceivingAddresses,
+        std::chrono::system_clock::now ().time_since_epoch ().count () * 5090567 + 337,
+        options.MaxDifficulty, options.MinProfitability, options.MinValue, 
+        options.Threads)->run (options.Websockets, options.RefreshInterval);
+    
+    delete Fees;
+    return 0;
+}
+
+const char version_string[] = "BoostMiner 0.2.6";
+
+int version () {
+    std::cout << version_string << std::endl;
+    return 0;
+}
+
+int help () {
+
+    std::cout << "Welcome to " << version_string << "!" << std::endl;
+    std::cout << "Input should be \n\t<method> <args>... --<option>=<value>... \nwhere method is "
+        "\n\tspend      -- create a Boost script."
         "\n\tredeem     -- mine and redeem an existing boost output."
-        "\nFor function \"spend\", remaining inputs should be "
+        "\n\tmine       -- call the pow.co API to get jobs to mine."
+        "\nFor method \"spend\" provide the following as options or as arguments in order "
         "\n\tcontent    -- hex for correct order, hexidecimal for reversed."
-        "\n\tdifficulty -- "
-        "\n\ttopic      -- string max 20 bytes."
-        "\n\tadd. data  -- string, any size."
-        "\n\taddress    -- OPTIONAL. If provided, a boost contract output will be created. Otherwise it will be boost bounty."
-        "\nFor function \"redeem\", remaining inputs should be "
-        "\n\tscript     -- boost output script."
-        "\n\tvalue      -- value in satoshis of the output."
+        "\n\tdifficulty -- a positive number."
+        "\n\ttopic      -- (optional) string max 20 bytes."
+        "\n\tdata       -- (optional) string, any size."
+        "\n\taddress    -- (optional) If provided, a boost contract output will be created. Otherwise it will be boost bounty."
+        "\nFor method \"redeem\", provide the following as options or as arguments in order "
         "\n\ttxid       -- txid of the tx that contains this output."
         "\n\tindex      -- index of the output within that tx."
         "\n\twif        -- private key that will be used to redeem this output."
-        "\n\taddress    -- your address where you will put the redeemed sats." << std::endl;
-    
+        "\n\tscript     -- (optional) boost output script, hex or bip 276."
+        "\n\tvalue      -- (optional) value in satoshis of the output."
+        "\n\taddress    -- (optional) your address where you will put the redeemed sats." 
+        "\n\t              If not provided, addresses will be generated from the key. " 
+        "\nFor method \"mine\", provide the following as options or as arguments in order"
+        "\n\tkey        -- WIF or HD private key that will be used to redeem outputs."
+        "\n\taddress    -- (optional) your address where you will put the redeemed sats."
+        "\n\t              If not provided, addresses will be generated from the key. " 
+        "\nadditional available options for redeem and mine are "
+        "\n\tapi_host          -- Host to call for Boost API. Default is pow.co"
+        "\n\tthreads           -- Number of threads to mine with. Default is 1."
+        "\n\tmin_profitability -- Boost jobs with less than this sats/difficulty will be ignored."
+        "\n\tmax_difficulty    -- Boost jobs above this difficulty will be ignored."
+        "\n\tfee_rate          -- Sats per byte of the final transaction."
+        "\n\t                     If not provided we get a fee quote from Gorilla Pool."
+        "\nadditional available options for mine are " <<
+        "\n\tmin_value         -- minimum value of a Boost output to bother mining." <<
+        "\n\twebsocket         -- use the websockets protocol if set." <<
+        "\n\trefresh_interval  -- how often to call the API for new jobs." << std::endl;
+
     return 0;
 }
 
-int main(int arg_count, char** arg_values) {
-	if(arg_count ==1) return help();
-    //if (arg_count != 5) return help();
-    
-    string function{arg_values[1]};
-    
-    try {
-        if (function == "spend") return spend(arg_count - 2, arg_values + 2);
-        if (function == "redeem") return redeem(arg_count - 2, arg_values + 2);
-        if (function == "help") return help();
-        help();
-    } catch (string x) {
-        std::cout << "Error: " << x << std::endl;
-    }
-    
-    return 1;
+int main (int arg_count, char** arg_values) {
+    return BoostPOW::run (argh::parser (arg_count, arg_values), help, version, spend, redeem, mine);
 }
 

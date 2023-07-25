@@ -1,18 +1,15 @@
-#include <boost/date_time.hpp>
-#include <nlohmann/json.hpp>
-
-using nlohmann::json;
+#include <logger.hpp>
+#include <mutex>
 
 namespace logger {
+  std::mutex Mutex;
 
   void log(std::string event, json j) {
+    std::lock_guard<std::mutex> lock(Mutex);
 
     boost::posix_time::ptime timestamp { boost::posix_time::microsec_clock::universal_time() };
 
-    j["timestamp"] = to_iso_extended_string(timestamp);
-    j["event"] = event;
-
-    std::cout << j.dump() << std::endl;
+    std::cout << json{{"event", event}, {"timestamp", to_iso_extended_string(timestamp)}, {"message", j} }.dump() << std::endl;
 
   }
 
