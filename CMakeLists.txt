@@ -44,6 +44,16 @@ target_include_directories (DetectBoost PUBLIC include)
 target_compile_features (DetectBoost PUBLIC cxx_std_20)
 set_target_properties (DetectBoost PROPERTIES CXX_EXTENSIONS OFF)
 
+add_executable (CheckAPI
+    src/check_API.cpp)
+
+target_link_libraries (CheckAPI PUBLIC bm)
+target_link_libraries (CheckAPI PUBLIC bm argh)
+target_include_directories (CheckAPI PUBLIC include)
+
+target_compile_features (CheckAPI PUBLIC cxx_std_20)
+set_target_properties (CheckAPI PROPERTIES CXX_EXTENSIONS OFF)
+
 option (PACKAGE_TESTS "Build the tests" ON)
 
 add_definitions ("-DHAS_BOOST")
