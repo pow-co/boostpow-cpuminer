@@ -36,6 +36,30 @@ struct pow_co : net::HTTP::client_blocking {
     
     bool broadcast (const bytes &);
 
+    struct get_work_query {
+        get_work_query &limit (uint32);
+        get_work_query &tag (string);
+        get_work_query &offset (uint32);
+        get_work_query &start (uint32);
+        get_work_query &end (uint32);
+
+        JSON operator () ();
+
+        get_work_query (pow_co &pc) : PowCo {pc} {}
+
+        maybe<uint32> Limit;
+        maybe<string> Tag;
+        maybe<uint32> Offset;
+        maybe<uint32> Start;
+        maybe<uint32> End;
+
+        pow_co &PowCo;
+    };
+
+    get_work_query get_work () {
+        return get_work_query {*this};
+    }
+
     struct websockets_protocol_message {
         string Type;
         JSON Content;
@@ -76,7 +100,32 @@ std::ostream inline &pow_co::write (std::ostream &o, const Bitcoin::txid &txid) 
 }
 
 std::ostream inline &pow_co::write (std::ostream &o, const Bitcoin::outpoint &out) {
-    return o << write (out.Digest) << "_o" << out.Index;
+    return o << write (out.Digest) << "_v" << out.Index;
+}
+
+pow_co::get_work_query inline &pow_co::get_work_query::limit (uint32 l) {
+    Limit = l;
+    return *this;
+}
+
+pow_co::get_work_query inline &pow_co::get_work_query::tag (string t) {
+    Tag = t;
+    return *this;
+}
+
+pow_co::get_work_query inline &pow_co::get_work_query::offset (uint32 o) {
+    Offset = o;
+    return *this;
+}
+
+pow_co::get_work_query inline &pow_co::get_work_query::start (uint32 s) {
+    Start = s;
+    return *this;
+}
+
+pow_co::get_work_query inline &pow_co::get_work_query::end (uint32 e) {
+    End = e;
+    return *this;
 }
 
 #endif

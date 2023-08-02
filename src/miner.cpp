@@ -12,7 +12,7 @@ namespace BoostPOW {
     using uint256 = Gigamonkey::uint256;
 
     // A cpu miner function. 
-    work::proof cpu_solve (const work::puzzle& p, const work::solution& initial, double max_time_seconds) {
+    work::proof cpu_solve (const work::puzzle &p, const work::solution &initial, double max_time_seconds) {
         
         uint32 initial_time = initial.Share.Timestamp.Value;
         uint32 local_initial_time = Bitcoin::timestamp::now ().Value;
@@ -197,9 +197,9 @@ namespace BoostPOW {
         // shouldn't happen
         if (!solution.valid ()) return;
         
-        if (work::proof {work::puzzle (Current.second), solution}.valid ()) submit(Current, solution);
+        if (work::proof {work::puzzle (Current.second), solution}.valid ()) submit (Current, solution);
         
-        else if (work::proof {work::puzzle (Last.second), solution}.valid ()) submit(Last, solution);
+        else if (work::proof {work::puzzle (Last.second), solution}.valid ()) submit (Last, solution);
     }
     
     void redeemer::mine (const std::pair<digest256, Boost::puzzle> &p) {

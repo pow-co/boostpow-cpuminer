@@ -45,8 +45,6 @@ int spend (const BoostPOW::script_options &options) {
     
     // If you use a contract script, then you are the only
     // one who can mine that boost output. 
-    
-    std::cout << "topic: " << options.Topic << "; data: " << options.Data << std::endl;
 
     if (options.MinerPubkeyHash) {
         std::cout << "miner address: " << *options.MinerPubkeyHash << std::endl;
@@ -159,14 +157,18 @@ int redeem (
 
     bytes boost_script {};
 
-    if (value <= 0 || !Boost::output_script {script}.valid ()) {
+    bool invalid_script = !Boost::output_script {script}.valid ();
+
+    if (value <= 0 || invalid_script) {
 
         Job = Net.job (outpoint);
         
         if (value <= 0) value = Job.value ();
         else if (value != Job.value ()) throw data::exception {"User provided value is incorrect"};
         
-        if (!script.valid ()) boost_script = Job.Script;
+        std::cout << "is script valid? " << std::boolalpha << script.valid () << std::endl;
+
+        if (invalid_script) boost_script = Job.Script;
         else {
             if (script != Job.Script) throw data::exception {"User provided script is incorrect"};
             boost_script = script;
@@ -310,7 +312,7 @@ int help () {
     return 0;
 }
 
-int main (int arg_count, char** arg_values) {
+int main (int arg_count, char **arg_values) {
     return BoostPOW::run (argh::parser (arg_count, arg_values), help, version, spend, redeem, mine);
 }
 

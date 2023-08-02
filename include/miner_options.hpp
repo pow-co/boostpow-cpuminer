@@ -47,10 +47,10 @@ namespace BoostPOW {
 
         // if provided, a contract script will be created.
         // Otherwise a bounty script will be created.
-        std::optional<digest160> MinerPubkeyHash {};
+        maybe<digest160> MinerPubkeyHash {};
 
-        std::optional<uint32> UserNonce {};
-        std::optional<uint32> Category {};
+        maybe<uint32> UserNonce {};
+        maybe<uint32> Category {};
     };
 
     struct redeeming_options {
@@ -62,11 +62,11 @@ namespace BoostPOW {
         uint32 Threads {1};
 
         // if not provided, look up fee rate from GorillaPool MAPI.
-        std::optional<double> FeeRate {};
+        maybe<double> FeeRate {};
 
         // Where to call the Boost API.
         // If not provided, use pow.co.
-        std::optional<string> APIHost {};
+        maybe<string> APIHost {};
     };
 
     struct mining_options : redeeming_options {

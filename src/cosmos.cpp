@@ -52,7 +52,7 @@ int command_receive (int arg_count, char** arg_values) {
     return 0;
 }
 
-int command_import(int arg_count, char** arg_values) {
+int command_import (int arg_count, char** arg_values) {
     if (arg_count != 5) throw data::exception {"invalid number of arguments; five expected."};
     
     std::string filename {arg_values[0]};
@@ -94,7 +94,7 @@ int command_send (int arg_count, char** arg_values) {
 int command_value (int arg_count, char** arg_values) {
     if (arg_count != 1) throw data::exception {"invalid number of arguments; one expected."};
     
-    std::string filename{arg_values[0]};
+    std::string filename {arg_values[0]};
     std::cout << read_wallet_from_file (filename).value () << std::endl;
     
     return 0;
