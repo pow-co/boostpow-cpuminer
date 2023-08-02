@@ -222,9 +222,25 @@ satoshi_per_byte BoostPOW::network::mining_fee () {
     return z.Fees["standard"].MiningFee;
 }
 
+Boost::candidate get_powco_job (BoostPOW::network &n, const Bitcoin::outpoint &o) {
+    try {
+        // this is supposed to work, but it actually doesn't.
+        return Boost::candidate {{n.PowCo.job (o)}};
+    } catch (const net::HTTP::exception &) {
+        // we have a failsafe while this call fails.
+        auto powco_job = n.PowCo.job (o.Digest);
+
+        // check that the vout is the same.
+        if (powco_job.outpoint ().Index != o.Index)
+            throw exception {} << "cannot find job with vout " << o.Index << " because an earlier job exists in that particular tx";
+
+        return Boost::candidate {{powco_job}};
+    }
+}
+
 Boost::candidate BoostPOW::network::job (const Bitcoin::outpoint &o) {
     // check for job at pow co. 
-    Boost::candidate x {{PowCo.job (o)}};
+    Boost::candidate x = get_powco_job (*this, o);
 
     // check for job with whatsonchain.
     auto script_hash = x.id ();

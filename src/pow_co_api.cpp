@@ -169,7 +169,7 @@ Bitcoin::prevout pow_co::job (const Bitcoin::outpoint &o) {
     
     std::stringstream path_stream;
     write (path_stream << "/api/v1/boost/jobs/", o);
-    
+    std::cout << "about to call for job " << path_stream.str ();
     auto request = this->REST.GET (path_stream.str ());
     
     auto response = (*this) (request);
@@ -185,6 +185,92 @@ Bitcoin::prevout pow_co::job (const Bitcoin::outpoint &o) {
     }
 
     return read_job (JSON::parse (response.Body)["job"], request, response);
+}
+
+JSON pow_co::get_work_query::operator () () {
+    std::cout << " calling get work " << std::endl;
+    list<entry<UTF8, UTF8>> params {};
+
+    if (bool (Limit)) params <<= entry<UTF8, UTF8> {"limit", std::to_string (*Limit)};
+
+    if (bool (Tag)) params <<= entry<UTF8, UTF8> {"tag", *Tag};
+
+    if (bool (Offset)) params <<= entry<UTF8, UTF8> {"offset", std::to_string (*Offset)};
+
+    if (bool (Start)) params <<= entry<UTF8, UTF8> {"start", std::to_string (*Start)};
+
+    if (bool (End)) params <<= entry<UTF8, UTF8> {"end", std::to_string (*End)};
+
+    auto request = data::empty (params) ?
+        PowCo.REST.GET ("/api/v1/boost/work") :
+        PowCo.REST.GET ("/api/v1/boost/work", params);
+
+    std::cout << " about to make request " << request.URL << std::endl;
+    auto response = PowCo (request);
+
+    if (static_cast<unsigned int> (response.Status) >= 500)
+        throw net::HTTP::exception {request, response, string {"problem reading txid."}};
+
+    if (static_cast<unsigned int> (response.Status) != 200) {
+        std::cout << "pow co returns response code " << response.Status << std::endl;
+        std::cout << " response body " << response.Body << std::endl;
+
+        throw net::HTTP::exception {request, response, string {"HTTP error response."}};
+    }
+
+    try {
+
+        return JSON::parse (response.Body);
+        /*
+        list<JSON> proofs;
+
+        for (const JSON &j : work["work"]) proofs <<= j;
+
+        return proofs;
+
+            pow_co::work w;
+
+            w.signature = j["signature"];
+
+            w.value = uint64 (j["value"]);
+            w.profitability = double (j["profitability"]);
+            w.difficulty = double (j["difficulty"]);
+            w.id = string (j["id"]);
+            w.timestamp = string (j["timestamp"]);
+            w.createdAt = string (j["createdAt"]);
+            w.updatedAt = string (j["updatedAt"]);
+
+            auto spend_txid_from_hex = encoding::hex::read (string (j["spend_txid"]));
+            auto job_txid_from_hex = encoding::hex::read (string (j["job_txid"]));
+            auto content_from_hex = encoding::hex::read (string (j["content"]));
+            auto tag_from_hex = encoding::hex::read (string (j["tag"]));
+            auto tx_from_hex = encoding::hex::read (string (j["tx_hex"]));
+
+            if (!(bool (spend_txid_from_hex) &&
+                bool (job_txid_from_hex) &&
+                bool (content_from_hex) &&
+                bool (tag_from_hex) &&
+                bool (tx_from_hex))) throw net::HTTP::exception {request, response, string {"invalid hex format"}};
+
+            std::copy (spend_txid_from_hex->begin (), spend_txid_from_hex->end (), w.spent.Digest.begin ());
+            std::copy (job_txid_from_hex->begin (), job_txid_from_hex->end (), w.job.Digest.begin ());
+
+            w.spent.Index = uint32 (j["spend_vout"]);
+            w.job.Index = uint32 (j["job_vout"]);
+
+            std::copy (content_from_hex->begin (), content_from_hex->end (), w.content.begin ());
+
+            w.tag = *tag_from_hex;
+            w.tx = *tx_from_hex;
+
+            w.minerPubKey = Bitcoin::pubkey {string (j["minerPubKey"])};
+
+            proofs <<= w;
+        }*/
+
+    } catch (const JSON::exception &ex) {
+        throw net::HTTP::exception {request, response, string {"invalid JSON: "} + ex.what ()};
+    }
 }
 
 bool pow_co::websockets_protocol_message::valid (const JSON &j) {
