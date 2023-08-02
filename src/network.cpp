@@ -66,7 +66,11 @@ map<digest256, list<Bitcoin::txid>> History;
 BoostPOW::jobs BoostPOW::network::jobs (uint32 limit, double max_difficulty, int64 min_value) {
     
     std::lock_guard<std::mutex> lock (Mutex);
-    const list<Bitcoin::prevout> jobs_api_call {PowCo.jobs (limit, max_difficulty)};
+
+    auto jobs_call = PowCo.jobs ().limit (limit);
+    if (max_difficulty > 0) jobs_call.max_difficulty (max_difficulty);
+
+    const list<Bitcoin::prevout> jobs_api_call {jobs_call ()};
     
     BoostPOW::jobs Jobs {};
     

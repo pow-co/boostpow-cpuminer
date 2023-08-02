@@ -40,21 +40,34 @@ Bitcoin::prevout read_job (const JSON &job,
         Bitcoin::output {Bitcoin::satoshi {value}, *script_bytes}};
 }
 
-list<Bitcoin::prevout> pow_co::jobs (uint32 limit, double max_difficulty) {
+list<Bitcoin::prevout> pow_co::get_jobs_query::operator () () {
 
-    std::cout << "getting " << limit << " jobs with max difficulty " << max_difficulty << std::endl;
-    
-    list<entry<data::UTF8, data::UTF8>> query_params;
-    
-    query_params <<= entry<data::UTF8, data::UTF8> {"limit", std::to_string (limit)};
-    
-    if (max_difficulty > 0) query_params <<= entry<data::UTF8, data::UTF8> {"maxDifficulty", std::to_string (max_difficulty)};
-    
-    auto request = this->REST.GET ("/api/v1/boost/jobs", query_params);
+    std::cout << "getting ";
+    if (bool (Limit)) std::cout << *Limit;
+    else std::cout << "unlimited";
+    std::cout << " jobs";
+    if (bool (MaxDifficulty)) std::cout << " with max difficulty " << *MaxDifficulty;
+    std::cout << "." << std::endl;
+
+    list<entry<UTF8, UTF8>> params {};
+
+    if (bool (Limit)) params <<= entry<UTF8, UTF8> {"limit", std::to_string (*Limit)};
+
+    if (bool (Content)) params <<= entry<UTF8, UTF8> {"content", write (*Content)};
+
+    if (bool (Tag)) params <<= entry<UTF8, UTF8> {"tag", *Tag};
+
+    if (bool (MaxDifficulty)) params <<= entry<UTF8, UTF8> {"maxDifficulty", std::to_string (*MaxDifficulty)};
+
+    if (bool (MaxDifficulty)) params <<= entry<UTF8, UTF8> {"minDifficulty", std::to_string (*MinDifficulty)};
+
+    auto request = data::empty (params) ?
+        PowCo.REST.GET ("/api/v1/boost/jobs") :
+        PowCo.REST.GET ("/api/v1/boost/jobs", params);
 
     std::cout << "making request to " << request.URL << std::endl;
 
-    auto response = this->operator () (request);
+    auto response = PowCo (request);
     
     if (response.Status != net::HTTP::status::ok) {
         std::stringstream ss;

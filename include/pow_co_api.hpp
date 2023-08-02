@@ -24,8 +24,30 @@ struct pow_co : net::HTTP::client_blocking {
     
     pow_co (net::asio::io_context &io, ptr<net::HTTP::SSL> ssl, string host = "pow.co") :
         net::HTTP::client_blocking {ssl, net::HTTP::REST {"https", host}, tools::rate_limiter {3, 1}}, IO {io}, SSL {ssl} {}
-    
-    list<Bitcoin::prevout> jobs (uint32 limit = 10, double max_difficulty = -1);
+
+    struct get_jobs_query {
+        get_jobs_query &limit (uint32);
+        get_jobs_query &content (digest256);
+        get_jobs_query &tag (string);
+        get_jobs_query &max_difficulty (double);
+        get_jobs_query &min_difficulty (double);
+
+        list<Bitcoin::prevout> operator () ();
+
+        get_jobs_query (pow_co &pc) : PowCo {pc} {}
+
+        maybe<uint32> Limit;
+        maybe<string> Tag;
+        maybe<digest256> Content;
+        maybe<uint32> MaxDifficulty;
+        maybe<uint32> MinDifficulty;
+
+        pow_co &PowCo;
+    };
+
+    get_jobs_query jobs () {
+        return get_jobs_query {*this};
+    }
     
     Bitcoin::prevout job (const Bitcoin::txid &);
     Bitcoin::prevout job (const Bitcoin::outpoint &);
@@ -101,6 +123,32 @@ std::ostream inline &pow_co::write (std::ostream &o, const Bitcoin::txid &txid) 
 
 std::ostream inline &pow_co::write (std::ostream &o, const Bitcoin::outpoint &out) {
     return o << write (out.Digest) << "_v" << out.Index;
+}
+
+
+pow_co::get_jobs_query inline &pow_co::get_jobs_query::limit (uint32 x) {
+    Limit = x;
+    return *this;
+}
+
+pow_co::get_jobs_query inline &pow_co::get_jobs_query::content (digest256 d) {
+    Content = d;
+    return *this;
+}
+
+pow_co::get_jobs_query inline &pow_co::get_jobs_query::tag (string x) {
+    Tag = x;
+    return *this;
+}
+
+pow_co::get_jobs_query inline &pow_co::get_jobs_query::max_difficulty (double m) {
+    MaxDifficulty = m;
+    return *this;
+}
+
+pow_co::get_jobs_query inline &pow_co::get_jobs_query::min_difficulty (double m) {
+    MinDifficulty = m;
+    return *this;
 }
 
 pow_co::get_work_query inline &pow_co::get_work_query::limit (uint32 l) {
